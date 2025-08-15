@@ -31,6 +31,7 @@ const PackageDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isBookingOpen, setBookingOpen] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -153,8 +154,14 @@ const PackageDetailPage: React.FC = () => {
         participants: data.participants,
         notes: data.notes,
       }]);
+
+      // Close modal and show success
       setBookingOpen(false);
-      navigate('/booking-confirmation');
+      setShowSuccess(true);
+
+      // Hide success after 3 seconds
+      setTimeout(() => setShowSuccess(false), 3000);
+
     } catch (e) {
       console.error(e);
     }
@@ -171,7 +178,7 @@ const PackageDetailPage: React.FC = () => {
   return (
     <>
       <Header />
-      <div className="bg-gradient-to-b from-gray-900 to-purple-900 min-h-screen pb-12">
+      <div className="bg-gradient-to-b from-gray-900 to-purple-900 min-h-screen pb-12 relative">
         <div className="container mx-auto px-4 py-6">
           <button onClick={handleBack} className="mb-4 text-cyan-400">
             ← Back to Packages
@@ -186,6 +193,13 @@ const PackageDetailPage: React.FC = () => {
             />
           )}
         </div>
+
+        {/* Success message */}
+        {showSuccess && (
+          <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50">
+            Booking confirmed! 🎉
+          </div>
+        )}
       </div>
       <Footer />
       <BookingModal
