@@ -31,6 +31,11 @@ interface ApiResponse {
   errors?: Array<{ msg: string; param: string }>;
 }
 
+// Auto-pick API base for both local + Netlify prod
+const API_BASE_URL =
+  (import.meta as any).env?.VITE_API_URL ??
+  ((import.meta as any).env?.PROD ? '/api' : 'http://localhost:5000');
+
 const ContactPage: React.FC = () => {
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -43,7 +48,7 @@ const ContactPage: React.FC = () => {
   const [isSuccess, setIsSuccess] = useState(false);
   const [serverMessage, setServerMessage] = useState('');
 
-  // Update these with your actual details
+  // Your visible contact info (doesn't affect email sending)
   const contactInfo = {
     email: 'your-email@example.com',
     phone: '+1 (555) 123-4567',
@@ -51,9 +56,6 @@ const ContactPage: React.FC = () => {
     hours: 'Mon - Fri: 9:00 AM - 6:00 PM',
     website: 'www.yourwebsite.com',
   };
-
-  // For production on Netlify Functions, leave VITE_API_URL unset and it will call relative /api
-  const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -77,6 +79,7 @@ const ContactPage: React.FC = () => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { id, value } = e.target;
     setFormData(prev => ({ ...prev, [id]: value }));
+
     if (errors[id]) {
       setErrors(prev => {
         const copy = { ...prev };
@@ -95,20 +98,20 @@ const ContactPage: React.FC = () => {
     setIsSuccess(false);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/contact`, {
+      const res = await fetch(`${API_BASE_URL}/contact`, {
+        // NOTE: '/api/*' mapping comes from netlify.toml; base already includes '/api' in prod
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
 
-      // Show server-provided error messages instead of generic “Network error”
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         let msg = 'Request failed';
         try {
           msg = (JSON.parse(text)?.message) || msg;
         } catch {
-          // not JSON
+          // non-JSON response
         }
         setServerMessage(msg);
         setIsSuccess(false);
@@ -120,7 +123,6 @@ const ContactPage: React.FC = () => {
       setServerMessage(data.message || 'Message sent successfully!');
       setFormData({ name: '', email: '', subject: '', message: '' });
 
-      // Auto-hide success after a bit
       setTimeout(() => {
         setIsSuccess(false);
         setServerMessage('');
@@ -375,28 +377,6 @@ const ContactPage: React.FC = () => {
                   )}
                 </button>
               </form>
-
-              {/* (Optional) Map — hide if no key to avoid 403s */}
-              {/* Provide VITE_GOOGLE_MAPS_KEY in env to enable */}
-              {/* <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl p-8 rounded-3xl border border-green-500/20 shadow-2xl">
-                <h3 className="text-3xl font-bold text-white mb-6 flex items-center">
-                  <FiMapPin className="mr-3 text-green-400" />
-                  Find Us Here
-                </h3>
-                <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-green-500/20">
-                  <iframe
-                    src={`https://www.google.com/maps/embed/v1/place?key=${import.meta.env.VITE_GOOGLE_MAPS_KEY}&q=${encodeURIComponent(contactInfo.address)}`}
-                    width="100%"
-                    height="400"
-                    style={{ border: 0 }}
-                    allowFullScreen
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                    className="rounded-2xl"
-                  ></iframe>
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none rounded-2xl"></div>
-                </div>
-              </div> */}
             </div>
           </div>
 
