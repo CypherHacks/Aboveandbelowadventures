@@ -1,5 +1,5 @@
 // netlify/functions/api.js
-// Force SendGrid only. If SENDGRID_API_KEY is missing or sender isn't verified, we fail clearly.
+// SendGrid-only sender with debug routes (sandbox + live). CommonJS for Netlify.
 const sgMail = require('@sendgrid/mail');
 
 // ---------- CORS ----------
@@ -26,6 +26,7 @@ const corsHeaders = (event) => ({
 const json = (event, statusCode, data, extraHeaders = {}) => ({
   statusCode,
   headers: {
+    'Content-Type:': 'application/json', // keep classic header too
     'Content-Type': 'application/json',
     ...corsHeaders(event),
     ...extraHeaders,
@@ -71,27 +72,29 @@ const requireSendGrid = () => {
   return { from, to, bcc };
 };
 
-const sendViaSendGrid = async (payload) => {
-  const { from, to, bcc } = requireSendGrid();
-
+const sendViaSendGrid = async ({ subject, text, replyTo, bcc, sandbox = false }) => {
+  const { from, to } = requireSendGrid();
   const msg = {
     to,
-    from,                // MUST be your verified sender
-    subject: `New Contact: ${payload.subject}`,
-    text: [
-      `Name: ${payload.name}`,
-      `Email: ${payload.email}`,
-      `Subject: ${payload.subject}`,
-      '',
-      payload.message,
-    ].join('\n'),
-    reply_to: payload.email,
-    mailSettings: { sandboxMode: { enable: false } }, // real send
+    from, // must be your verified Single Sender
+    subject,
+    text,
+    mailSettings: { sandboxMode: { enable: sandbox } },
   };
+  if (replyTo) msg.reply_to = replyTo;
   if (bcc) msg.bcc = bcc;
 
   const resp = await sgMail.send(msg);
-  return { method: 'sendgrid', statusCode: resp[0]?.statusCode || null };
+  const statusCode = resp[0]?.statusCode || null;
+  const headers = resp[0]?.headers || {};
+  const messageId =
+    headers['x-message-id'] ||
+    headers['X-Message-Id'] ||
+    headers['x-messageid'] ||
+    headers['X-MessageID'] ||
+    null;
+
+  return { statusCode, messageId };
 };
 
 // ---------- Handler ----------
@@ -109,7 +112,7 @@ exports.handler = async (event) => {
     return json(event, 200, { ok: true, message: 'API is healthy.' });
   }
 
-  // Provider check (always sendgrid in this forced version)
+  // Provider debug
   if (method === 'GET' && route === '/debug/provider') {
     const present = Boolean(process.env.SENDGRID_API_KEY);
     return json(event, 200, {
@@ -123,24 +126,38 @@ exports.handler = async (event) => {
     });
   }
 
-  // SendGrid sandbox test (no real delivery)
+  // SendGrid sandbox test — no real delivery
   if (method === 'GET' && route === '/debug/sendgrid') {
     try {
-      const { from, to } = requireSendGrid();
-      const resp = await sgMail.send({
-        to,
-        from,
+      const data = await sendViaSendGrid({
         subject: 'SendGrid sandbox verify',
         text: 'This is a sandbox verification — no real delivery.',
-        mailSettings: { sandboxMode: { enable: true } },
+        sandbox: true,
       });
-      return json(event, 200, { ok: true, statusCode: resp[0]?.statusCode || null });
+      return json(event, 200, { ok: true, ...data });
     } catch (err) {
       return json(event, 200, { ok: false, error: String(err?.message || err) });
     }
   }
 
-  // Contact
+  // LIVE test — sends a real message (use this to confirm delivery)
+  if (method === 'GET' && route === '/debug/sendgrid/live') {
+    try {
+      const bcc = process.env.BCC_EMAIL || undefined;
+      const now = new Date().toISOString();
+      const data = await sendViaSendGrid({
+        subject: `SendGrid LIVE test ${now}`,
+        text: `Live test at ${now}. If you see this, SendGrid is delivering.`,
+        sandbox: false,
+        bcc,
+      });
+      return json(event, 200, { ok: true, live: true, ...data });
+    } catch (err) {
+      return json(event, 200, { ok: false, live: true, error: String(err?.message || err) });
+    }
+  }
+
+  // Contact submission
   if (method === 'POST' && route === '/contact') {
     if (!event.body) return json(event, 400, { success: false, message: 'Missing body' });
 
@@ -155,17 +172,25 @@ exports.handler = async (event) => {
     if (errors.length) return json(event, 400, { success: false, message: 'Validation error', errors });
 
     try {
+      const bcc = process.env.BCC_EMAIL || undefined;
       const result = await sendViaSendGrid({
-        name: body.name.trim(),
-        email: body.email.trim(),
-        subject: body.subject.trim(),
-        message: body.message.trim(),
+        subject: `New Contact: ${body.subject.trim()}`,
+        text: [
+          `Name: ${body.name.trim()}`,
+          `Email: ${body.email.trim()}`,
+          `Subject: ${body.subject.trim()}`,
+          '',
+          body.message.trim(),
+        ].join('\n'),
+        replyTo: body.email.trim(),
+        bcc,
+        sandbox: false,
       });
 
       return json(event, 200, {
         success: true,
-        provider: result.method,
-        info: { statusCode: result.statusCode },
+        provider: 'sendgrid',
+        info: { statusCode: result.statusCode, messageId: result.messageId },
         message: 'Thanks! Your message has been sent.',
       });
     } catch (err) {

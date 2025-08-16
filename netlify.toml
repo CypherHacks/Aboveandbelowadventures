@@ -2,11 +2,13 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
+# Pretty API URLs (optional but handy)
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
 
+# SPA fallback LAST
 [[redirects]]
   from = "/*"
   to = "/index.html"
