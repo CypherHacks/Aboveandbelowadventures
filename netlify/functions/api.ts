@@ -3,26 +3,25 @@ import type { Handler, HandlerEvent } from '@netlify/functions';
 import nodemailer from 'nodemailer';
 
 // ---------- CORS ----------
-const parseAllowedOrigins = (raw: string | undefined) =>
+const parseAllowed = (raw?: string) =>
   (raw || '')
     .split(',')
     .map(s => s.trim())
     .filter(Boolean);
 
-const getCorsOrigin = (event: HandlerEvent) => {
-  const allowed = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
+const corsOrigin = (event: HandlerEvent) => {
+  const allowed = parseAllowed(process.env.ALLOWED_ORIGINS);
   const reqOrigin =
     (event.headers?.origin as string | undefined) ||
     (event.headers?.Origin as string | undefined) ||
     '';
-
   if (allowed.length === 0) return '*';
-  if (!reqOrigin) return allowed[0]; // default to first
+  if (!reqOrigin) return allowed[0];
   return allowed.includes(reqOrigin) ? reqOrigin : allowed[0];
 };
 
 const corsHeaders = (event: HandlerEvent) => ({
-  'Access-Control-Allow-Origin': getCorsOrigin(event),
+  'Access-Control-Allow-Origin': corsOrigin(event),
   'Access-Control-Allow-Headers': 'Content-Type',
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
 });
@@ -39,7 +38,6 @@ const send = (event: HandlerEvent, statusCode: number, data: unknown, extraHeade
 });
 
 const routeFrom = (event: HandlerEvent) => {
-  // "/.netlify/functions/api/contact" -> "/contact"
   const raw = event.path || '/';
   const cleaned = raw.replace(/^\/\.netlify\/functions\/api/, '');
   return cleaned || '/';
@@ -55,7 +53,6 @@ type ContactBody = {
 const validate = (b: ContactBody) => {
   const e: Array<{ msg: string; param: keyof ContactBody }> = [];
   const s = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
-
   if (!s(b.name)) e.push({ msg: 'Name is required', param: 'name' });
   else if (s(b.name).length < 2) e.push({ msg: 'Name must be at least 2 characters', param: 'name' });
 
@@ -72,60 +69,45 @@ const validate = (b: ContactBody) => {
   return e;
 };
 
-// Read either EMAIL_* (your setup) or SMTP_* (alternate)
+// Read EMAIL_* (your setup) or SMTP_* (alternate)
 const envEmail = () => {
   const host = process.env.EMAIL_HOST || process.env.SMTP_HOST;
   const port = Number(process.env.EMAIL_PORT || process.env.SMTP_PORT || 0);
   const secureFlag = (process.env.EMAIL_SECURE ?? process.env.SMTP_SECURE ?? '').toString().toLowerCase();
-  const secure = secureFlag === 'true';
+  const secure = secureFlag === 'true'; // 465 => true, 587 => false (STARTTLS)
   const user = process.env.EMAIL_USER || process.env.SMTP_USER;
   const pass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
-
-  // recipients / branding
-  const to =
-    process.env.RECIPIENT_EMAIL || process.env.TO_EMAIL || user;
-  const from =
-    process.env.FROM_EMAIL ||
-    (user ? `Website Contact <${user}>` : undefined);
-
-  return {
-    host,
-    port,
-    secure,
-    user,
-    pass,
-    to,
-    from,
-    // optional: service name, but we prefer host/port explicitly
-    service: process.env.EMAIL_SERVICE || process.env.SMTP_SERVICE,
-  };
+  const to = process.env.RECIPIENT_EMAIL || process.env.TO_EMAIL || user;
+  const from = process.env.FROM_EMAIL || (user ? `Website Contact <${user}>` : undefined);
+  return { host, port, secure, user, pass, to, from };
 };
 
-const isConfigured = (cfg: ReturnType<typeof envEmail>) =>
-  Boolean(cfg.host && cfg.port && cfg.user && cfg.pass);
+const isConfigured = (c: ReturnType<typeof envEmail>) => Boolean(c.host && c.port && c.user && c.pass);
 
-const buildTransporter = (cfg: ReturnType<typeof envEmail>) => {
-  if (!isConfigured(cfg)) return null;
-
-  // Prefer host/port; ignore "service" to avoid provider-specific quirks
+const buildTransporter = (c: ReturnType<typeof envEmail>) => {
+  if (!isConfigured(c)) return null;
   return nodemailer.createTransport({
-    host: cfg.host!,
-    port: cfg.port!,
-    secure: cfg.secure, // 465=true, 587=false (STARTTLS)
-    auth: { user: cfg.user!, pass: cfg.pass! },
+    host: c.host!,
+    port: c.port!,
+    secure: c.secure,      // false on 587 -> STARTTLS
+    requireTLS: !c.secure, // enforce STARTTLS when secure=false
+    auth: { user: c.user!, pass: c.pass! },
+    // tighten TLS for modern providers
+    tls: { minVersion: 'TLSv1.2', servername: c.host },
   });
 };
+
+const DEBUG_EMAIL = String(process.env.DEBUG_EMAIL || '').toLowerCase() === 'true';
 
 const sendEmail = async (payload: Required<ContactBody>) => {
   const cfg = envEmail();
   const transporter = buildTransporter(cfg);
 
   if (!transporter) {
-    console.warn('[api] Email not sent: EMAIL_* / SMTP_* env missing.');
-    return { skipped: true as const, info: null, config: { configured: false, cfg } };
+    return { skipped: true as const, info: null, error: 'EMAIL_*/SMTP_* not fully configured' };
   }
 
-  // For debugging delivery issues: verify creds and connectivity
+  // Verify credentials/connectivity first — surfaces most config errors
   await transporter.verify();
 
   const info = await transporter.sendMail({
@@ -139,14 +121,10 @@ const sendEmail = async (payload: Required<ContactBody>) => {
       '',
       payload.message,
     ].join('\n'),
-    replyTo: payload.email, // Do NOT set From to visitor email (DMARC)
+    replyTo: payload.email, // Never set From to visitor (DMARC)
   });
 
-  return {
-    skipped: false as const,
-    info: { messageId: info.messageId, accepted: info.accepted, rejected: info.rejected },
-    config: { configured: true, cfg: { ...cfg, pass: cfg.pass ? '***' : undefined } },
-  };
+  return { skipped: false as const, info: { messageId: info.messageId, accepted: info.accepted, rejected: info.rejected } };
 };
 
 // ---------- handler ----------
@@ -158,9 +136,7 @@ export const handler: Handler = async (event) => {
   if (method === 'OPTIONS') {
     return {
       statusCode: 204,
-      headers: {
-        ...corsHeaders(event),
-      },
+      headers: { ...corsHeaders(event) },
       body: '',
     };
   }
@@ -178,19 +154,8 @@ export const handler: Handler = async (event) => {
         return send(event, 200, {
           ok: true,
           configured: false,
-          present: {
-            host: !!cfg.host,
-            port: !!cfg.port,
-            user: !!cfg.user,
-            pass: !!cfg.pass,
-          },
-          effective: {
-            host: cfg.host,
-            port: cfg.port,
-            secure: cfg.secure,
-            to: cfg.to,
-            from: cfg.from,
-          },
+          present: { host: !!cfg.host, port: !!cfg.port, user: !!cfg.user, pass: !!cfg.pass },
+          effective: { host: cfg.host, port: cfg.port, secure: cfg.secure, to: cfg.to, from: cfg.from },
           note: 'Set EMAIL_* (or SMTP_*) vars and redeploy.',
         });
       }
@@ -200,29 +165,15 @@ export const handler: Handler = async (event) => {
         ok: true,
         configured: true,
         verify: 'ok',
-        effective: {
-          host: cfg.host,
-          port: cfg.port,
-          secure: cfg.secure,
-          to: cfg.to,
-          from: cfg.from,
-        },
+        effective: { host: cfg.host, port: cfg.port, secure: cfg.secure, to: cfg.to, from: cfg.from },
       });
     } catch (err: any) {
-      console.error('[api] SMTP verify failed:', err?.message || err);
-      const cfg = envEmail();
+      const msg = String(err?.message || err);
       return send(event, 200, {
         ok: false,
-        configured: isConfigured(cfg),
+        configured: true,
         verify: 'fail',
-        error: String(err?.message || err),
-        effective: {
-          host: cfg.host,
-          port: cfg.port,
-          secure: cfg.secure,
-          to: cfg.to,
-          from: cfg.from,
-        },
+        error: msg,
       });
     }
   }
@@ -257,9 +208,14 @@ export const handler: Handler = async (event) => {
           ? 'Form received — email sending is disabled (EMAIL_*/SMTP_* not fully configured).'
           : 'Thanks! Your message has been sent.',
       });
-    } catch (err) {
-      console.error('[api] Email send failed:', err);
-      return send(event, 500, { success: false, message: 'Failed to send email. Please try again later.' });
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      // Return concise provider error when DEBUG_EMAIL is on (helps you fix creds/host quickly)
+      return send(event, 500, {
+        success: false,
+        message: 'Failed to send email. Please try again later.',
+        ...(DEBUG_EMAIL ? { error: msg } : {}),
+      });
     }
   }
 
