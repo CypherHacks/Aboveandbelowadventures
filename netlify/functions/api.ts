@@ -7,84 +7,54 @@ import rateLimit from 'express-rate-limit';
 import nodemailer from 'nodemailer';
 import { body, validationResult } from 'express-validator';
 
-// ---------- Express app ----------
 const app = express();
 
-// ---------- CORS allowlist ----------
-// Allowlist comes from env (comma-separated), plus any *.netlify.app preview URLs.
-// Example env:
-//   ALLOWED_ORIGINS=https://aboveandbelowadventuresjo.com,https://www.aboveandbelowadventuresjo.com,https://aboveandbelowadventures.netlify.app
-const allowedFromEnv = (process.env.ALLOWED_ORIGINS || '')
-  .split(',')
-  .map(s => s.trim().replace(/\/+$/, '')) // strip trailing slashes
-  .filter(Boolean);
-
-function isAllowedOrigin(origin: string | undefined) {
-  if (!origin) return true; // non-browser requests or same-origin fetches without Origin
-  const normalized = origin.replace(/\/+$/, '');
-  if (allowedFromEnv.includes(normalized)) return true;
-  try {
-    const host = new URL(normalized).hostname;
-    if (host.endsWith('.netlify.app')) return true; // allow Netlify previews/branches
-  } catch {
-    // ignore bad Origin values
-  }
-  return false;
-}
-
-app.use(helmet());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
-
+// ---------- DEBUG MODE CORS (TEMPORARY) ----------
+// Allow anything so we don't fight CORS while debugging.
+// REVERT to allowlist once email is working.
 app.use(
   cors({
-    origin(origin, cb) {
-      if (isAllowedOrigin(origin)) return cb(null, true);
-      return cb(new Error(`CORS blocked for origin: ${origin}`));
-    },
+    origin: true, // reflect request origin
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type'],
     credentials: true,
-    maxAge: 86400, // cache preflight 1 day
+    maxAge: 0,
   })
 );
+app.options(['*', '/api/*', '/.netlify/functions/api/*'], (_req, res) => res.sendStatus(204));
 
-// Preflight handlers for all likely paths
-app.options(['/api/*', '/.netlify/functions/api/*', '/contact', '/health'], (_req, res) =>
-  res.sendStatus(204)
-);
+// Helmet after CORS so it doesn't add strict defaults that interfere during debug
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
 
-// ---------- Rate limit ----------
+// ---------- Rate limit (kept small) ----------
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 10,
   message: { error: 'Too many contact form submissions, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// ---------- SMTP helpers ----------
-function pickDefaultHost(emailUser?: string) {
-  // Outlook / Hotmail / Live (consumer) → smtp-mail.outlook.com
-  if (emailUser && /@(outlook|hotmail|live)\.com$/i.test(emailUser)) {
-    return 'smtp-mail.outlook.com';
-  }
-  // Otherwise assume Microsoft 365 business
-  return 'smtp.office365.com';
-}
+// ---------- SMTP (force Outlook consumer host while debugging) ----------
+const SMTP_HOST = process.env.EMAIL_HOST || 'smtp-mail.outlook.com';
+const SMTP_PORT = Number(process.env.EMAIL_PORT || 587);
 
-function buildTransporter(host: string) {
+function buildTransporter() {
   return nodemailer.createTransport({
-    host,
-    port: Number(process.env.EMAIL_PORT || 587),
-    secure: false, // STARTTLS on 587
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: false,       // STARTTLS on 587
     requireTLS: true,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
-    pool: true,
-    maxConnections: 1,
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 20_000,
+    pool: false,         // simpler during debug
     tls: {
       minVersion: 'TLSv1.2',
       rejectUnauthorized: true,
@@ -92,148 +62,112 @@ function buildTransporter(host: string) {
   });
 }
 
-async function trySendBothHosts(sendFn: (host: string) => Promise<void>) {
-  const primary = process.env.EMAIL_HOST || pickDefaultHost(process.env.EMAIL_USER);
-  const fallback =
-    primary === 'smtp.office365.com' ? 'smtp-mail.outlook.com' : 'smtp.office365.com';
-
-  try {
-    await sendFn(primary);
-    return { hostUsed: primary, fallbackTried: false };
-  } catch (errPrimary: any) {
-    console.warn('Primary SMTP failed:', primary, errPrimary?.code, errPrimary?.message);
-    try {
-      await sendFn(fallback);
-      return { hostUsed: fallback, fallbackTried: true };
-    } catch (errFallback: any) {
-      const combined = new Error(
-        `SMTP failed (primary ${primary}: ${errPrimary?.code || errPrimary?.message}; fallback ${fallback}: ${errFallback?.code || errFallback?.message})`
-      ) as any;
-      combined.code = errFallback?.code || errPrimary?.code || 'SMTP_FAIL';
-      combined.primary = { host: primary, code: errPrimary?.code, msg: errPrimary?.message };
-      combined.fallback = { host: fallback, code: errFallback?.code, msg: errFallback?.message };
-      throw combined;
-    }
-  }
-}
-
 // ---------- Validation ----------
 const contactValidation = [
-  body('name')
-    .trim()
-    .isLength({ min: 2, max: 100 })
-    .withMessage('Name must be between 2 and 100 characters')
-    .matches(/^[a-zA-Z\s]+$/)
-    .withMessage('Name can only contain letters and spaces'),
+  body('name').trim().isLength({ min: 2, max: 100 }).withMessage('Name must be between 2 and 100 characters'),
   body('email').trim().isEmail().normalizeEmail().withMessage('Please provide a valid email address'),
   body('subject').trim().isLength({ min: 5, max: 200 }).withMessage('Subject must be between 5 and 200 characters'),
   body('message').trim().isLength({ min: 10, max: 2000 }).withMessage('Message must be between 10 and 2000 characters'),
 ];
 
-// ---------- Health (match all likely paths) ----------
+// ---------- Health ----------
 const healthPaths = ['/api/health', '/.netlify/functions/api/health', '/health'];
 app.get(healthPaths, (_req: Request, res: Response) => {
   res.json({
     status: 'OK',
     timestamp: new Date().toISOString(),
     env: {
-      host: process.env.EMAIL_HOST || pickDefaultHost(process.env.EMAIL_USER),
+      host: SMTP_HOST,
+      port: SMTP_PORT,
       user_set: !!process.env.EMAIL_USER,
       pass_set: !!process.env.EMAIL_PASS,
       rcpt_set: !!process.env.RECIPIENT_EMAIL,
       node: process.version,
-      allowed_origins: allowedFromEnv,
     },
   });
 });
 
-// ---------- Contact (match all likely paths) ----------
+// ---------- Contact ----------
 const contactPaths = ['/api/contact', '/.netlify/functions/api/contact', '/contact'];
 app.post(contactPaths, limiter, contactValidation, async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'Validation failed', errors: errors.array() });
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
     }
 
     const { name, email, subject, message } = req.body as {
-      name: string;
-      email: string;
-      subject: string;
-      message: string;
+      name: string; email: string; subject: string; message: string;
     };
 
+    // env sanity
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS || !process.env.RECIPIENT_EMAIL) {
-      console.error('Missing email env:', {
-        EMAIL_USER: !!process.env.EMAIL_USER,
-        EMAIL_PASS: !!process.env.EMAIL_PASS,
-        RECIPIENT_EMAIL: !!process.env.RECIPIENT_EMAIL,
+      return res.status(500).json({
+        success: false,
+        message: 'Email configuration is incomplete.',
+        debug: {
+          EMAIL_USER: !!process.env.EMAIL_USER,
+          EMAIL_PASS: !!process.env.EMAIL_PASS,
+          RECIPIENT_EMAIL: !!process.env.RECIPIENT_EMAIL,
+        }
       });
-      return res
-        .status(500)
-        .json({ success: false, message: 'Email configuration is incomplete.' });
     }
 
-    const sendWithHost = async (host: string) => {
-      const transporter = buildTransporter(host);
+    const transporter = buildTransporter();
 
-      try {
-        await transporter.verify();
-        console.log('SMTP verify OK on', host);
-      } catch (vErr: any) {
-        console.warn('SMTP verify failed on', host, vErr?.code, vErr?.message);
-      }
+    // Try verify (ok if it fails; some servers allow send without verify)
+    try {
+      await transporter.verify();
+      console.log('SMTP verify OK on', SMTP_HOST);
+    } catch (vErr: any) {
+      console.warn('SMTP verify failed:', vErr?.code, vErr?.message);
+    }
 
-      const recipientMailOptions = {
-        from: process.env.EMAIL_USER, // must match authenticated mailbox for Outlook
-        to: process.env.RECIPIENT_EMAIL,
-        subject: `New Contact Form Submission: ${subject}`,
-        html: `<p><strong>Name:</strong> ${name}</p>
-               <p><strong>Email:</strong> ${email}</p>
-               <p><strong>Subject:</strong> ${subject}</p>
-               <p><strong>Message:</strong><br>${String(message).replace(/\n/g, '<br>')}</p>`,
-        replyTo: email,
-      };
-
-      const autoReplyOptions = {
-        from: process.env.EMAIL_USER,
-        to: email,
-        subject: `Thank you for contacting us, ${name}!`,
-        html: `<p>Hello ${name},</p>
-               <p>Thank you for your message. We will get back to you soon.</p>`,
-      };
-
-      await Promise.all([
-        transporter.sendMail(recipientMailOptions),
-        transporter.sendMail(autoReplyOptions),
-      ]);
+    const toOwner = {
+      from: process.env.EMAIL_USER, // must equal authenticated mailbox for Outlook
+      to: process.env.RECIPIENT_EMAIL,
+      subject: `New Contact Form Submission: ${subject}`,
+      html: `<p><strong>Name:</strong> ${name}</p>
+             <p><strong>Email:</strong> ${email}</p>
+             <p><strong>Subject:</strong> ${subject}</p>
+             <p><strong>Message:</strong><br>${String(message).replace(/\n/g, '<br>')}</p>`,
+      replyTo: email,
     };
 
-    const outcome = await trySendBothHosts(sendWithHost);
-    console.log(
-      'Mail sent successfully via host:',
-      outcome.hostUsed,
-      'fallback used:',
-      outcome.fallbackTried
-    );
+    const toSender = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: `Thank you for contacting us, ${name}!`,
+      html: `<p>Hello ${name},</p>
+             <p>Thank you for your message. We will get back to you soon.</p>`,
+    };
+
+    await transporter.sendMail(toOwner);
+    await transporter.sendMail(toSender);
+
     res.json({ success: true, message: "Message sent successfully! We'll get back to you soon." });
   } catch (err: any) {
+    // SHOW REAL ERROR BACK TO CLIENT (for debugging)
     console.error('Contact form error:', {
       code: err?.code,
+      response: err?.response,
+      responseCode: err?.responseCode,
+      command: err?.command,
       message: err?.message,
-      primary: err?.primary,
-      fallback: err?.fallback,
       stack: err?.stack,
     });
-    res
-      .status(500)
-      .json({ success: false, message: `Failed to send message (${err?.code || 'UNKNOWN'}).` });
+    res.status(500).json({
+      success: false,
+      message: 'Email send failed',
+      errorCode: err?.code || 'UNKNOWN',
+      responseCode: err?.responseCode,
+      errorMessage: err?.message || 'No message',
+      command: err?.command,
+    });
   }
 });
 
-// ---------- 404 JSON for unknown routes ----------
+// ---------- 404 JSON ----------
 app.use((req: Request, res: Response) => {
   res.status(404).json({ success: false, message: `Not found: ${req.method} ${req.path}` });
 });
@@ -244,6 +178,6 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ success: false, message: 'Something went wrong!' });
 });
 
-// ---------- Export handler ----------
+// ---------- Export ----------
 const handlerFn = serverless(app);
 export const handler = async (event: any, context: any) => handlerFn(event, context);
