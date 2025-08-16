@@ -2,20 +2,12 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# Clean "/api/*" URLs → serverless function
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
 
-# SPA fallback (optional, if you don't already have this elsewhere)
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
-
-[dev]
-  command = "vite"
-  framework = "vite"
-  targetPort = 5173
-  port = 8888
