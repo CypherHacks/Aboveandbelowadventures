@@ -1,4 +1,3 @@
-// netlify/functions/api.ts
 import serverless from 'serverless-http';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
@@ -10,11 +9,11 @@ import { body, validationResult } from 'express-validator';
 // ---------- Express app ----------
 const app = express();
 
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:8888',
-  process.env.FRONTEND_URL,
-].filter(Boolean) as string[];
+// Build allowlist from env + always allow Netlify preview domains
+const allowedFromEnv = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
 
 app.use(helmet());
 app.use(express.json({ limit: '10mb' }));
@@ -24,14 +23,24 @@ app.use(
   cors({
     origin(origin, cb) {
       if (!origin) return cb(null, true);
-      if (allowedOrigins.includes(origin)) return cb(null, true);
+      if (allowedFromEnv.includes(origin)) return cb(null, true);
+      try {
+        const host = new URL(origin).hostname;
+        if (host.endsWith('.netlify.app')) return cb(null, true);
+      } catch {
+        // ignore bad Origin values
+      }
       return cb(new Error(`CORS blocked for origin: ${origin}`));
     },
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type'],
     credentials: true,
+    maxAge: 86400,
   })
 );
+
+// Preflight handler
+app.options('/api/*', (_req, res) => res.sendStatus(204));
 
 // ---------- Rate limit ----------
 const limiter = rateLimit({
@@ -44,11 +53,9 @@ const limiter = rateLimit({
 
 // ---------- Helpers ----------
 function pickDefaultHost(emailUser?: string) {
-  // If user’s domain is outlook/hotmail/live -> consumer host
   if (emailUser && /@(outlook|hotmail|live)\.com$/i.test(emailUser)) {
     return 'smtp-mail.outlook.com';
   }
-  // Else assume Microsoft 365 business
   return 'smtp.office365.com';
 }
 
@@ -56,7 +63,7 @@ function buildTransporter(host: string) {
   return nodemailer.createTransport({
     host,
     port: Number(process.env.EMAIL_PORT || 587),
-    secure: false,          // STARTTLS over 587
+    secure: false,
     requireTLS: true,
     auth: {
       user: process.env.EMAIL_USER,
@@ -85,7 +92,6 @@ async function trySendBothHosts(sendFn: (host: string) => Promise<void>) {
       await sendFn(fallback);
       return { hostUsed: fallback, fallbackTried: true };
     } catch (errFallback: any) {
-      // rethrow with both errors
       const combined = new Error(
         `SMTP failed (primary ${primary}: ${errPrimary?.code || errPrimary?.message}; fallback ${fallback}: ${errFallback?.code || errFallback?.message})`
       ) as any;
@@ -122,7 +128,6 @@ app.get('/api/health', (req: Request, res: Response) => {
 });
 
 // ---------- Contact ----------
-app.options('/api/contact', cors());
 app.post('/api/contact', limiter, contactValidation, async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
@@ -146,7 +151,6 @@ app.post('/api/contact', limiter, contactValidation, async (req: Request, res: R
     const sendWithHost = async (host: string) => {
       const transporter = buildTransporter(host);
 
-      // Soft verify (may fail even if sendMail works)
       try {
         await transporter.verify();
         console.log('SMTP verify OK on', host);
@@ -155,7 +159,7 @@ app.post('/api/contact', limiter, contactValidation, async (req: Request, res: R
       }
 
       const recipientMailOptions = {
-        from: process.env.EMAIL_USER, // MUST equal authenticated mailbox for Outlook
+        from: process.env.EMAIL_USER,
         to: process.env.RECIPIENT_EMAIL,
         subject: `New Contact Form Submission: ${subject}`,
         html: `<p><strong>Name:</strong> ${name}</p>
