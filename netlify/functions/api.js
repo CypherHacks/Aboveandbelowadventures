@@ -1,6 +1,6 @@
 // netlify/functions/api.js
-// SendGrid-only sender with debug routes (sandbox + live). CommonJS for Netlify.
-const sgMail = require('@sendgrid/mail');
+// Gmail SMTP (App Password) only. Nodemailer + debug routes. CommonJS for Netlify.
+const nodemailer = require('nodemailer');
 
 // ---------- CORS ----------
 const parseAllowed = (raw) =>
@@ -26,7 +26,6 @@ const corsHeaders = (event) => ({
 const json = (event, statusCode, data, extraHeaders = {}) => ({
   statusCode,
   headers: {
-    'Content-Type:': 'application/json', // keep classic header too
     'Content-Type': 'application/json',
     ...corsHeaders(event),
     ...extraHeaders,
@@ -60,41 +59,53 @@ const validate = (b) => {
   return e;
 };
 
-// ---------- SendGrid only ----------
-const requireSendGrid = () => {
-  const key = process.env.SENDGRID_API_KEY;
-  const from = process.env.FROM_EMAIL || process.env.SENDGRID_FROM;
-  const to = process.env.RECIPIENT_EMAIL || from;
-  const bcc = process.env.BCC_EMAIL;
-  if (!key) throw new Error('SENDGRID_API_KEY is not set');
-  if (!from) throw new Error('FROM_EMAIL (or SENDGRID_FROM) is required and must be a VERIFIED Single Sender in SendGrid');
-  sgMail.setApiKey(key);
-  return { from, to, bcc };
+// ---------- Gmail SMTP ----------
+const envSMTP = () => {
+  const host = process.env.EMAIL_HOST || 'smtp.gmail.com';
+  const port = Number(process.env.EMAIL_PORT || 465);
+  const secure = String(process.env.EMAIL_SECURE || 'true').toLowerCase() === 'true';
+  const user = process.env.EMAIL_USER;
+  const pass = process.env.EMAIL_PASS;
+  const to = process.env.RECIPIENT_EMAIL || user;
+  const from = user; // Gmail requires the from to be the authenticated user (or alias)
+  return { host, port, secure, user, pass, to, from };
 };
 
-const sendViaSendGrid = async ({ subject, text, replyTo, bcc, sandbox = false }) => {
-  const { from, to } = requireSendGrid();
-  const msg = {
-    to,
-    from, // must be your verified Single Sender
+const smtpConfigured = (c) => Boolean(c.host && c.port && c.user && c.pass);
+const buildSMTPTransporter = (c) => {
+  if (!smtpConfigured(c)) return null;
+  return nodemailer.createTransport({
+    host: c.host,
+    port: c.port,
+    secure: c.secure,          // true on 465 (SSL), false on 587 (STARTTLS)
+    requireTLS: !c.secure,     // enforce STARTTLS when secure=false
+    auth: { user: c.user, pass: c.pass },
+    tls: { minVersion: 'TLSv1.2', servername: c.host },
+  });
+};
+
+const sendViaGmail = async ({ subject, text, replyTo }) => {
+  const cfg = envSMTP();
+  if (!smtpConfigured(cfg)) throw new Error('Gmail SMTP not fully configured. Set EMAIL_* env vars.');
+  const transporter = buildSMTPTransporter(cfg);
+
+  // Verify first (surfaces auth/connection errors clearly)
+  await transporter.verify();
+
+  const info = await transporter.sendMail({
+    from: cfg.from,
+    to: cfg.to,
     subject,
     text,
-    mailSettings: { sandboxMode: { enable: sandbox } },
+    ...(replyTo ? { replyTo } : {}),
+  });
+
+  return {
+    messageId: info.messageId || null,
+    accepted: info.accepted || [],
+    rejected: info.rejected || [],
+    response: info.response || null,
   };
-  if (replyTo) msg.reply_to = replyTo;
-  if (bcc) msg.bcc = bcc;
-
-  const resp = await sgMail.send(msg);
-  const statusCode = resp[0]?.statusCode || null;
-  const headers = resp[0]?.headers || {};
-  const messageId =
-    headers['x-message-id'] ||
-    headers['X-Message-Id'] ||
-    headers['x-messageid'] ||
-    headers['X-MessageID'] ||
-    null;
-
-  return { statusCode, messageId };
 };
 
 // ---------- Handler ----------
@@ -114,53 +125,65 @@ exports.handler = async (event) => {
 
   // Provider debug
   if (method === 'GET' && route === '/debug/provider') {
-    const present = Boolean(process.env.SENDGRID_API_KEY);
+    const c = envSMTP();
     return json(event, 200, {
-      provider: 'sendgrid',
-      sendgrid: {
-        present,
-        from: process.env.FROM_EMAIL || process.env.SENDGRID_FROM || null,
-        to: process.env.RECIPIENT_EMAIL || process.env.FROM_EMAIL || null,
-        bcc: process.env.BCC_EMAIL || null,
+      provider: 'gmail-smtp',
+      smtp: {
+        configured: smtpConfigured(c),
+        host: c.host,
+        port: c.port,
+        secure: c.secure,
+        userPresent: Boolean(c.user),
+        passPresent: Boolean(c.pass),
+        to: c.to,
+        from: c.from,
       },
     });
   }
 
-  // SendGrid sandbox test — no real delivery
-  if (method === 'GET' && route === '/debug/sendgrid') {
+  // SMTP verify
+  if (method === 'GET' && route === '/debug/smtp') {
     try {
-      const data = await sendViaSendGrid({
-        subject: 'SendGrid sandbox verify',
-        text: 'This is a sandbox verification — no real delivery.',
-        sandbox: true,
+      const c = envSMTP();
+      if (!smtpConfigured(c)) {
+        return json(event, 200, {
+          ok: true,
+          configured: false,
+          present: { host: !!c.host, port: !!c.port, user: !!c.user, pass: !!c.pass },
+          effective: { host: c.host, port: c.port, secure: c.secure, to: c.to, from: c.from },
+          note: 'Set EMAIL_* env vars and redeploy.',
+        });
+      }
+      const transporter = buildSMTPTransporter(c);
+      await transporter.verify();
+      return json(event, 200, {
+        ok: true,
+        configured: true,
+        verify: 'ok',
+        effective: { host: c.host, port: c.port, secure: c.secure, to: c.to, from: c.from },
       });
-      return json(event, 200, { ok: true, ...data });
     } catch (err) {
-      return json(event, 200, { ok: false, error: String(err?.message || err) });
+      return json(event, 200, { ok: false, configured: true, verify: 'fail', error: String(err?.message || err) });
     }
   }
 
-  // LIVE test — sends a real message (use this to confirm delivery)
-  if (method === 'GET' && route === '/debug/sendgrid/live') {
+  // LIVE test — sends a real email now
+  if (method === 'GET' && route === '/debug/gmail/live') {
     try {
-      const bcc = process.env.BCC_EMAIL || undefined;
       const now = new Date().toISOString();
-      const data = await sendViaSendGrid({
-        subject: `SendGrid LIVE test ${now}`,
-        text: `Live test at ${now}. If you see this, SendGrid is delivering.`,
-        sandbox: false,
-        bcc,
+      const info = await sendViaGmail({
+        subject: `Gmail LIVE test ${now}`,
+        text: `Live test at ${now}. If you see this, Gmail SMTP is delivering.`,
       });
-      return json(event, 200, { ok: true, live: true, ...data });
+      return json(event, 200, { ok: true, live: true, info });
     } catch (err) {
       return json(event, 200, { ok: false, live: true, error: String(err?.message || err) });
     }
   }
 
-  // Contact submission
+  // Contact submit
   if (method === 'POST' && route === '/contact') {
     if (!event.body) return json(event, 400, { success: false, message: 'Missing body' });
-
     let body;
     try {
       body = JSON.parse(event.body);
@@ -172,8 +195,7 @@ exports.handler = async (event) => {
     if (errors.length) return json(event, 400, { success: false, message: 'Validation error', errors });
 
     try {
-      const bcc = process.env.BCC_EMAIL || undefined;
-      const result = await sendViaSendGrid({
+      const info = await sendViaGmail({
         subject: `New Contact: ${body.subject.trim()}`,
         text: [
           `Name: ${body.name.trim()}`,
@@ -183,14 +205,12 @@ exports.handler = async (event) => {
           body.message.trim(),
         ].join('\n'),
         replyTo: body.email.trim(),
-        bcc,
-        sandbox: false,
       });
 
       return json(event, 200, {
         success: true,
-        provider: 'sendgrid',
-        info: { statusCode: result.statusCode, messageId: result.messageId },
+        provider: 'gmail-smtp',
+        info,
         message: 'Thanks! Your message has been sent.',
       });
     } catch (err) {
