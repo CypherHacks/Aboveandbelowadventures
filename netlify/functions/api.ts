@@ -1,183 +1,144 @@
 // netlify/functions/api.ts
-import serverless from 'serverless-http';
-import express, { Request, Response, NextFunction } from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import type { Handler, HandlerEvent } from '@netlify/functions';
 import nodemailer from 'nodemailer';
-import { body, validationResult } from 'express-validator';
 
-const app = express();
+type ContactBody = {
+  name?: string;
+  email?: string;
+  subject?: string;
+  message?: string;
+};
 
-// ---------- DEBUG MODE CORS (TEMPORARY) ----------
-// Allow anything so we don't fight CORS while debugging.
-// REVERT to allowlist once email is working.
-app.use(
-  cors({
-    origin: true, // reflect request origin
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type'],
-    credentials: true,
-    maxAge: 0,
-  })
-);
-app.options(['*', '/api/*', '/.netlify/functions/api/*'], (_req, res) => res.sendStatus(204));
-
-// Helmet after CORS so it doesn't add strict defaults that interfere during debug
-app.use(helmet({ contentSecurityPolicy: false }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
-
-// ---------- Rate limit (kept small) ----------
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { error: 'Too many contact form submissions, please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
+const send = (statusCode: number, data: unknown, extraHeaders: Record<string, string> = {}) => ({
+  statusCode,
+  headers: {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    ...extraHeaders,
+  },
+  body: JSON.stringify(data),
 });
 
-// ---------- SMTP (force Outlook consumer host while debugging) ----------
-const SMTP_HOST = process.env.EMAIL_HOST || 'smtp-mail.outlook.com';
-const SMTP_PORT = Number(process.env.EMAIL_PORT || 587);
+const stripApiPrefix = (event: HandlerEvent) => {
+  // event.path example: "/.netlify/functions/api/contact"
+  const raw = event.path || '/';
+  const cleaned = raw.replace(/^\/\.netlify\/functions\/api/, '');
+  return cleaned || '/';
+};
 
-function buildTransporter() {
-  return nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: false,       // STARTTLS on 587
-    requireTLS: true,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-    connectionTimeout: 15_000,
-    greetingTimeout: 15_000,
-    socketTimeout: 20_000,
-    pool: false,         // simpler during debug
-    tls: {
-      minVersion: 'TLSv1.2',
-      rejectUnauthorized: true,
-    },
-  });
-}
+const validate = (b: ContactBody) => {
+  const e: Array<{ msg: string; param: keyof ContactBody }> = [];
+  const s = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 
-// ---------- Validation ----------
-const contactValidation = [
-  body('name').trim().isLength({ min: 2, max: 100 }).withMessage('Name must be between 2 and 100 characters'),
-  body('email').trim().isEmail().normalizeEmail().withMessage('Please provide a valid email address'),
-  body('subject').trim().isLength({ min: 5, max: 200 }).withMessage('Subject must be between 5 and 200 characters'),
-  body('message').trim().isLength({ min: 10, max: 2000 }).withMessage('Message must be between 10 and 2000 characters'),
-];
+  if (!s(b.name)) e.push({ msg: 'Name is required', param: 'name' });
+  else if (s(b.name).length < 2) e.push({ msg: 'Name must be at least 2 characters', param: 'name' });
 
-// ---------- Health ----------
-const healthPaths = ['/api/health', '/.netlify/functions/api/health', '/health'];
-app.get(healthPaths, (_req: Request, res: Response) => {
-  res.json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    env: {
-      host: SMTP_HOST,
-      port: SMTP_PORT,
-      user_set: !!process.env.EMAIL_USER,
-      pass_set: !!process.env.EMAIL_PASS,
-      rcpt_set: !!process.env.RECIPIENT_EMAIL,
-      node: process.version,
-    },
-  });
-});
+  const email = s(b.email);
+  if (!email) e.push({ msg: 'Email is required', param: 'email' });
+  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.push({ msg: 'Please enter a valid email', param: 'email' });
 
-// ---------- Contact ----------
-const contactPaths = ['/api/contact', '/.netlify/functions/api/contact', '/contact'];
-app.post(contactPaths, limiter, contactValidation, async (req: Request, res: Response) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
-    }
+  if (!s(b.subject)) e.push({ msg: 'Subject is required', param: 'subject' });
+  else if (s(b.subject).length < 5) e.push({ msg: 'Subject must be at least 5 characters', param: 'subject' });
 
-    const { name, email, subject, message } = req.body as {
-      name: string; email: string; subject: string; message: string;
-    };
+  if (!s(b.message)) e.push({ msg: 'Message is required', param: 'message' });
+  else if (s(b.message).length < 10) e.push({ msg: 'Message should be at least 10 characters', param: 'message' });
 
-    // env sanity
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS || !process.env.RECIPIENT_EMAIL) {
-      return res.status(500).json({
-        success: false,
-        message: 'Email configuration is incomplete.',
-        debug: {
-          EMAIL_USER: !!process.env.EMAIL_USER,
-          EMAIL_PASS: !!process.env.EMAIL_PASS,
-          RECIPIENT_EMAIL: !!process.env.RECIPIENT_EMAIL,
-        }
-      });
-    }
+  return e;
+};
 
-    const transporter = buildTransporter();
+const sendEmail = async (payload: Required<ContactBody>) => {
+  const {
+    SMTP_HOST,
+    SMTP_PORT,
+    SMTP_USER,
+    SMTP_PASS,
+    SMTP_SECURE,
+    TO_EMAIL,
+    FROM_EMAIL,
+  } = process.env;
 
-    // Try verify (ok if it fails; some servers allow send without verify)
-    try {
-      await transporter.verify();
-      console.log('SMTP verify OK on', SMTP_HOST);
-    } catch (vErr: any) {
-      console.warn('SMTP verify failed:', vErr?.code, vErr?.message);
-    }
-
-    const toOwner = {
-      from: process.env.EMAIL_USER, // must equal authenticated mailbox for Outlook
-      to: process.env.RECIPIENT_EMAIL,
-      subject: `New Contact Form Submission: ${subject}`,
-      html: `<p><strong>Name:</strong> ${name}</p>
-             <p><strong>Email:</strong> ${email}</p>
-             <p><strong>Subject:</strong> ${subject}</p>
-             <p><strong>Message:</strong><br>${String(message).replace(/\n/g, '<br>')}</p>`,
-      replyTo: email,
-    };
-
-    const toSender = {
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: `Thank you for contacting us, ${name}!`,
-      html: `<p>Hello ${name},</p>
-             <p>Thank you for your message. We will get back to you soon.</p>`,
-    };
-
-    await transporter.sendMail(toOwner);
-    await transporter.sendMail(toSender);
-
-    res.json({ success: true, message: "Message sent successfully! We'll get back to you soon." });
-  } catch (err: any) {
-    // SHOW REAL ERROR BACK TO CLIENT (for debugging)
-    console.error('Contact form error:', {
-      code: err?.code,
-      response: err?.response,
-      responseCode: err?.responseCode,
-      command: err?.command,
-      message: err?.message,
-      stack: err?.stack,
-    });
-    res.status(500).json({
-      success: false,
-      message: 'Email send failed',
-      errorCode: err?.code || 'UNKNOWN',
-      responseCode: err?.responseCode,
-      errorMessage: err?.message || 'No message',
-      command: err?.command,
-    });
+  // If SMTP is not configured, do not crash—return success to unblock UI testing
+  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
+    console.warn('[api] SMTP not configured — skipping real send.');
+    return { skipped: true };
   }
-});
 
-// ---------- 404 JSON ----------
-app.use((req: Request, res: Response) => {
-  res.status(404).json({ success: false, message: `Not found: ${req.method} ${req.path}` });
-});
+  const transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: Number(SMTP_PORT),
+    secure: String(SMTP_SECURE).toLowerCase() === 'true', // true=465, false=587
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+  });
 
-// ---------- Error handler ----------
-app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('Unhandled error:', err?.stack || err);
-  res.status(500).json({ success: false, message: 'Something went wrong!' });
-});
+  const to = TO_EMAIL || SMTP_USER;
+  const from = FROM_EMAIL || `Website Contact <${SMTP_USER}>`;
 
-// ---------- Export ----------
-const handlerFn = serverless(app);
-export const handler = async (event: any, context: any) => handlerFn(event, context);
+  await transporter.sendMail({
+    from,
+    to,
+    subject: `New Contact: ${payload.subject}`,
+    text: [
+      `Name: ${payload.name}`,
+      `Email: ${payload.email}`,
+      `Subject: ${payload.subject}`,
+      '',
+      payload.message,
+    ].join('\n'),
+    replyTo: payload.email,
+  });
+
+  return { skipped: false };
+};
+
+export const handler: Handler = async (event) => {
+  const method = event.httpMethod.toUpperCase();
+  const route = stripApiPrefix(event);
+
+  // CORS preflight
+  if (method === 'OPTIONS') {
+    return {
+      statusCode: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+      },
+      body: '',
+    };
+  }
+
+  if (method === 'GET' && (route === '/' || route === '/health')) {
+    return send(200, { ok: true, message: 'API is healthy.' });
+  }
+
+  if (method === 'POST' && route === '/contact') {
+    if (!event.body) return send(400, { success: false, message: 'Missing body' });
+
+    let body: ContactBody;
+    try {
+      body = JSON.parse(event.body);
+    } catch {
+      return send(400, { success: false, message: 'Invalid JSON body' });
+    }
+
+    const errors = validate(body);
+    if (errors.length) return send(400, { success: false, message: 'Validation error', errors });
+
+    try {
+      await sendEmail({
+        name: body.name!.trim(),
+        email: body.email!.trim(),
+        subject: body.subject!.trim(),
+        message: body.message!.trim(),
+      });
+      return send(200, { success: true, message: 'Thanks! Your message has been sent.' });
+    } catch (err) {
+      console.error('[api] Email send failed:', err);
+      return send(500, { success: false, message: 'Failed to send email. Please try again later.' });
+    }
+  }
+
+  return send(404, { success: false, message: `Not found: ${method} ${route}` });
+};

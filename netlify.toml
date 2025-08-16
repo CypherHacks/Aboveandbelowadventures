@@ -1,16 +1,21 @@
-[build]
-  command = "npm run build"
-  publish = "dist"
-  functions = "netlify/functions"
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
 
-# API must come BEFORE the SPA catch-all
+# Clean "/api/*" URLs → serverless function
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
 
-# SPA fallback
+# SPA fallback (optional, if you don't already have this elsewhere)
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+[dev]
+  command = "vite"
+  framework = "vite"
+  targetPort = 5173
+  port = 8888
