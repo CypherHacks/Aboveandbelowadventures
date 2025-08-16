@@ -14,11 +14,13 @@ const ContactPage: React.FC = () => {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [skipped, setSkipped] = useState<boolean | null>(null);
 
   const resetAlerts = () => {
     setGlobalError(null);
     setSuccess(null);
     setFieldErrors({});
+    setSkipped(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -33,13 +35,11 @@ const ContactPage: React.FC = () => {
         body: JSON.stringify({ name, email, subject, message }),
       });
 
-      // Read text first to robustly handle non-JSON error responses
       const raw = await res.text();
       let data: any = {};
       try {
         data = raw ? JSON.parse(raw) : {};
       } catch {
-        // If server returned HTML (e.g., index.html), surface a clear message
         throw new Error('Server returned non-JSON. Check Netlify redirects and function path.');
       }
 
@@ -53,6 +53,7 @@ const ContactPage: React.FC = () => {
       }
 
       setSuccess(data?.message || 'Message sent successfully!');
+      setSkipped(Boolean(data?.skipped));
       setName('');
       setEmail('');
       setSubject('');
@@ -77,6 +78,11 @@ const ContactPage: React.FC = () => {
         {success && (
           <div className="mb-4 rounded-lg border border-green-300 bg-green-50 px-4 py-3 text-green-700">
             {success}
+          </div>
+        )}
+        {skipped && (
+          <div className="mb-4 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 text-yellow-800">
+            Heads up: email sending is <b>disabled</b> (SMTP not configured). The form was received, but no email was sent.
           </div>
         )}
 
@@ -152,9 +158,10 @@ const ContactPage: React.FC = () => {
           </button>
         </form>
 
-        <div className="mt-6 text-xs text-neutral-500">
+        <div className="mt-6 text-xs text-neutral-500 space-y-1">
           <p>API Base: <code>{API_BASE_URL}</code></p>
-          <p className="mt-1">Tip: For local dev, run <code>netlify dev</code> so <code>/api</code> proxies to your function.</p>
+          <p>Debug SMTP: <code>{API_BASE_URL}/debug/smtp</code></p>
+          <p>Tip: run <code>netlify dev</code> for local proxy of <code>/api</code> → function.</p>
         </div>
       </div>
     </div>
