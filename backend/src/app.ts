@@ -45,18 +45,25 @@ const limiter = rateLimit({
 });
 
 // ---- Outlook SMTP transporter ----
+// Hardened Outlook transporter for Netlify Functions
 const createTransporter = () =>
   nodemailer.createTransport({
     host: process.env.EMAIL_HOST || 'smtp.office365.com',
-    port: parseInt(process.env.EMAIL_PORT || '587', 10),
-    secure: false, // STARTTLS on 587
+    port: Number(process.env.EMAIL_PORT || 587),
+    secure: false,             // 587 uses STARTTLS
     auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
+      user: process.env.EMAIL_USER!,
+      pass: process.env.EMAIL_PASS!,
     },
+    requireTLS: true,          // make STARTTLS mandatory
+    pool: true,                // serverless-friendly connection pooling
+    maxConnections: 1,         // avoid multiple concurrent SMTP connects
     tls: {
-      rejectUnauthorized: false,
+      minVersion: 'TLSv1.2',
+      // ciphers: 'TLSv1.2',   // usually not needed; uncomment if TLS errors persist
+      rejectUnauthorized: true // keep this true in prod
     },
+    // authMethod: 'LOGIN',    // uncomment if EAUTH persists
   });
 
 // ---- Validation ----
@@ -79,6 +86,7 @@ app.get('/health', (req: Request, res: Response) => {
 
 // ---- Contact endpoint ----
 app.options('/api/contact', cors());
+
 app.post('/api/contact', limiter, contactValidation, async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
@@ -87,11 +95,20 @@ app.post('/api/contact', limiter, contactValidation, async (req: Request, res: R
     }
 
     const { name, email, subject, message } = req.body;
+
     const transporter = createTransporter();
-    await transporter.verify();
+
+    // optional: you can skip verify() in serverless to reduce failures/latency
+    try {
+      await transporter.verify();
+      console.log('SMTP verified OK');
+    } catch (vErr: any) {
+      console.error('SMTP verify failed:', vErr?.code, vErr?.message);
+      // continue anyway; sometimes verify fails but sendMail works
+    }
 
     const recipientMailOptions = {
-      from: process.env.EMAIL_USER,
+      from: process.env.EMAIL_USER,    // must match authenticated mailbox
       to: process.env.RECIPIENT_EMAIL,
       subject: `New Contact Form Submission: ${subject}`,
       html: `<p><strong>Name:</strong> ${name}</p>
@@ -102,21 +119,34 @@ app.post('/api/contact', limiter, contactValidation, async (req: Request, res: R
     };
 
     const autoReplyOptions = {
-      from: process.env.EMAIL_USER,
+      from: process.env.EMAIL_USER,    // keep same mailbox for Outlook
       to: email,
       subject: `Thank you for contacting us, ${name}!`,
       html: `<p>Hello ${name},</p>
              <p>Thank you for your message. We will get back to you soon.</p>`,
     };
 
-    await Promise.all([transporter.sendMail(recipientMailOptions), transporter.sendMail(autoReplyOptions)]);
+    await Promise.all([
+      transporter.sendMail(recipientMailOptions),
+      transporter.sendMail(autoReplyOptions),
+    ]);
 
     res.json({ success: true, message: "Message sent successfully! We'll get back to you soon." });
-  } catch (error) {
-    console.error('Contact form error:', error);
-    res.status(500).json({ success: false, message: 'Failed to send message. Please try again later.' });
+  } catch (err: any) {
+    console.error('Contact form error:', {
+      code: err?.code,
+      response: err?.response,
+      message: err?.message,
+      stack: err?.stack,
+    });
+    // temporarily expose the code to help you debug from the UI
+    res.status(500).json({
+      success: false,
+      message: `Failed to send message (${err?.code || 'UNKNOWN'}).`,
+    });
   }
 });
+
 
 // ---- Error handler ----
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
