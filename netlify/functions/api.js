@@ -1,36 +1,34 @@
-// netlify/functions/api.ts
-import type { Handler, HandlerEvent } from '@netlify/functions';
-import nodemailer from 'nodemailer';
+// netlify/functions/api.js
+const nodemailer = require('nodemailer');
 
-// Lazy requires for optional providers so build doesn't explode if not installed
-let sendgridMail: any = null;
-let ResendClient: any = null;
+// Lazy requires for optional providers so build doesn't fail if libs missing
+let sgMail = null;
 
 // ---------- CORS ----------
-const parseAllowed = (raw?: string) =>
+const parseAllowed = (raw) =>
   (raw || '')
     .split(',')
-    .map(s => s.trim())
+    .map((s) => s.trim())
     .filter(Boolean);
 
-const corsOrigin = (event: HandlerEvent) => {
+const corsOrigin = (event) => {
   const allowed = parseAllowed(process.env.ALLOWED_ORIGINS);
   const reqOrigin =
-    (event.headers?.origin as string | undefined) ||
-    (event.headers?.Origin as string | undefined) ||
+    event.headers?.origin ||
+    event.headers?.Origin ||
     '';
   if (allowed.length === 0) return '*';
   if (!reqOrigin) return allowed[0];
   return allowed.includes(reqOrigin) ? reqOrigin : allowed[0];
 };
 
-const corsHeaders = (event: HandlerEvent) => ({
+const corsHeaders = (event) => ({
   'Access-Control-Allow-Origin': corsOrigin(event),
   'Access-Control-Allow-Headers': 'Content-Type',
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
 });
 
-const json = (event: HandlerEvent, statusCode: number, data: unknown, extraHeaders: Record<string, string> = {}) => ({
+const json = (event, statusCode, data, extraHeaders = {}) => ({
   statusCode,
   headers: {
     'Content-Type': 'application/json',
@@ -40,23 +38,16 @@ const json = (event: HandlerEvent, statusCode: number, data: unknown, extraHeade
   body: JSON.stringify(data),
 });
 
-const routeFrom = (event: HandlerEvent) => {
+const routeFrom = (event) => {
   const raw = event.path || '/';
   const cleaned = raw.replace(/^\/\.netlify\/functions\/api/, '');
   return cleaned || '/';
 };
 
-type ContactBody = {
-  name?: string;
-  email?: string;
-  subject?: string;
-  message?: string;
-};
-
-const validate = (b: ContactBody) => {
-  const e: Array<{ msg: string; param: keyof ContactBody }> = [];
-  const s = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
-
+// ---------- Validation ----------
+const validate = (b) => {
+  const e = [];
+  const s = (v) => (typeof v === 'string' ? v.trim() : '');
   if (!s(b.name)) e.push({ msg: 'Name is required', param: 'name' });
   else if (s(b.name).length < 2) e.push({ msg: 'Name must be at least 2 characters', param: 'name' });
 
@@ -77,7 +68,7 @@ const validate = (b: ContactBody) => {
 const envSMTP = () => {
   const host = process.env.EMAIL_HOST || process.env.SMTP_HOST;
   const port = Number(process.env.EMAIL_PORT || process.env.SMTP_PORT || 0);
-  const secureFlag = (process.env.EMAIL_SECURE ?? process.env.SMTP_SECURE ?? '').toString().toLowerCase();
+  const secureFlag = String(process.env.EMAIL_SECURE ?? process.env.SMTP_SECURE ?? '').toLowerCase();
   const secure = secureFlag === 'true'; // 465 => true, 587 => false (STARTTLS)
   const user = process.env.EMAIL_USER || process.env.SMTP_USER;
   const pass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
@@ -85,36 +76,32 @@ const envSMTP = () => {
   const from = process.env.FROM_EMAIL || (user ? `Website Contact <${user}>` : undefined);
   return { host, port, secure, user, pass, to, from };
 };
-const smtpConfigured = (c: ReturnType<typeof envSMTP>) => Boolean(c.host && c.port && c.user && c.pass);
-const buildSMTPTransporter = (c: ReturnType<typeof envSMTP>) => {
+const smtpConfigured = (c) => Boolean(c.host && c.port && c.user && c.pass);
+const buildSMTPTransporter = (c) => {
   if (!smtpConfigured(c)) return null;
   return nodemailer.createTransport({
-    host: c.host!,
-    port: c.port!,
+    host: c.host,
+    port: c.port,
     secure: c.secure,      // false on 587 -> STARTTLS
     requireTLS: !c.secure, // enforce STARTTLS when secure=false
-    auth: { user: c.user!, pass: c.pass! },
+    auth: { user: c.user, pass: c.pass },
     tls: { minVersion: 'TLSv1.2', servername: c.host },
   });
 };
 
 const hasSendgrid = () => Boolean(process.env.SENDGRID_API_KEY);
-const hasResend = () => Boolean(process.env.RESEND_API_KEY);
-const provider = () => (hasSendgrid() ? 'sendgrid' : hasResend() ? 'resend' : 'smtp') as
-  | 'sendgrid'
-  | 'resend'
-  | 'smtp';
+const provider = () => (hasSendgrid() ? 'sendgrid' : 'smtp');
 
 const DEBUG_EMAIL = String(process.env.DEBUG_EMAIL || '').toLowerCase() === 'true';
 
 // ---------- Senders ----------
-const sendViaSMTP = async (payload: Required<ContactBody>) => {
+const sendViaSMTP = async (payload) => {
   const cfg = envSMTP();
   const transporter = buildSMTPTransporter(cfg);
   if (!transporter) {
-    return { method: 'smtp' as const, skipped: true, info: null, error: 'SMTP not fully configured' };
+    return { method: 'smtp', skipped: true, info: null, error: 'SMTP not fully configured' };
   }
-  // verify first (this is where Outlook throws 535)
+  // verify first (Outlook will throw 535 here if blocked)
   await transporter.verify();
   const info = await transporter.sendMail({
     from: cfg.from,
@@ -129,23 +116,21 @@ const sendViaSMTP = async (payload: Required<ContactBody>) => {
     ].join('\n'),
     replyTo: payload.email,
   });
-  return { method: 'smtp' as const, skipped: false, info: { messageId: info.messageId, accepted: info.accepted, rejected: info.rejected } };
+  return { method: 'smtp', skipped: false, info: { messageId: info.messageId, accepted: info.accepted, rejected: info.rejected } };
 };
 
-const sendViaSendgrid = async (payload: Required<ContactBody>) => {
-  if (!sendgridMail) {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    sendgridMail = require('@sendgrid/mail');
-    sendgridMail.setApiKey(process.env.SENDGRID_API_KEY);
+const sendViaSendgrid = async (payload) => {
+  if (!sgMail) {
+    sgMail = require('@sendgrid/mail');
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
   }
-  // IMPORTANT: FROM must match a verified Single Sender (or a verified domain)
   const from = process.env.FROM_EMAIL || process.env.SENDGRID_FROM;
   const to = process.env.RECIPIENT_EMAIL || from;
   if (!from) throw new Error('FROM_EMAIL (or SENDGRID_FROM) is required for SendGrid');
 
   const msg = {
     to,
-    from, // must be VERIFIED in SendGrid (Single Sender is OK)
+    from, // must be a VERIFIED Single Sender or from a verified domain in SendGrid
     subject: `New Contact: ${payload.subject}`,
     text: [
       `Name: ${payload.name}`,
@@ -157,63 +142,37 @@ const sendViaSendgrid = async (payload: Required<ContactBody>) => {
     reply_to: payload.email,
   };
 
-  const resp = await sendgridMail.send(msg);
-  return { method: 'sendgrid' as const, skipped: false, info: { statusCode: resp[0]?.statusCode } };
+  const resp = await sgMail.send(msg);
+  return { method: 'sendgrid', skipped: false, info: { statusCode: resp[0]?.statusCode } };
 };
 
-const sendViaResend = async (payload: Required<ContactBody>) => {
-  if (!ResendClient) {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    ResendClient = require('resend').Resend;
-  }
-  const resend = new ResendClient(process.env.RESEND_API_KEY);
-  const from = process.env.FROM_EMAIL || 'contact@your-domain.com'; // must be a verified sender/domain in Resend
-  const to = process.env.RECIPIENT_EMAIL || process.env.EMAIL_USER;
-  const result = await resend.emails.send({
-    from,
-    to: [to!],
-    subject: `New Contact: ${payload.subject}`,
-    text: [
-      `Name: ${payload.name}`,
-      `Email: ${payload.email}`,
-      `Subject: ${payload.subject}`,
-      '',
-      payload.message,
-    ].join('\n'),
-    reply_to: payload.email,
-  });
-  if ((result as any).error) throw new Error(String((result as any).error));
-  return { method: 'resend' as const, skipped: false, info: { id: (result as any).data?.id } };
-};
-
-// Combined sender — prefers SendGrid, then Resend, then SMTP
-const sendEmail = async (payload: Required<ContactBody>) => {
+const sendEmail = async (payload) => {
   const p = provider();
   if (p === 'sendgrid') return sendViaSendgrid(payload);
-  if (p === 'resend') return sendViaResend(payload);
   return sendViaSMTP(payload);
 };
 
-// ---------- handler ----------
-export const handler: Handler = async (event) => {
+// ---------- Handler ----------
+exports.handler = async (event) => {
   const method = (event.httpMethod || 'GET').toUpperCase();
   const route = routeFrom(event);
 
+  // CORS preflight
   if (method === 'OPTIONS') {
     return { statusCode: 204, headers: { ...corsHeaders(event) }, body: '' };
   }
 
+  // Health
   if (method === 'GET' && (route === '/' || route === '/health')) {
     return json(event, 200, { ok: true, message: 'API is healthy.' });
   }
 
-  // Which provider will be used?
+  // Provider debug
   if (method === 'GET' && route === '/debug/provider') {
     const smtp = envSMTP();
     return json(event, 200, {
       provider: provider(),
       sendgrid: { present: hasSendgrid() },
-      resend: { present: hasResend() },
       smtp: {
         configured: smtpConfigured(smtp),
         host: smtp.host,
@@ -227,34 +186,33 @@ export const handler: Handler = async (event) => {
     });
   }
 
-  // SendGrid sandbox test — checks key + sender identity without actually delivering
+  // SendGrid sandbox test
   if (method === 'GET' && route === '/debug/sendgrid') {
     try {
       if (!hasSendgrid()) return json(event, 200, { ok: false, reason: 'SENDGRID_API_KEY not set' });
-      if (!sendgridMail) {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        sendgridMail = require('@sendgrid/mail');
-        sendgridMail.setApiKey(process.env.SENDGRID_API_KEY);
+      if (!sgMail) {
+        sgMail = require('@sendgrid/mail');
+        sgMail.setApiKey(process.env.SENDGRID_API_KEY);
       }
       const from = process.env.FROM_EMAIL || process.env.SENDGRID_FROM;
       const to = process.env.RECIPIENT_EMAIL || from;
       if (!from) return json(event, 200, { ok: false, reason: 'FROM_EMAIL (or SENDGRID_FROM) is required' });
 
-      const resp = await sendgridMail.send({
+      const resp = await sgMail.send({
         to,
-        from, // must be verified Single Sender or domain
+        from,
         subject: 'SendGrid sandbox verify',
         text: 'This is a sandbox verification — no real delivery.',
         mailSettings: { sandboxMode: { enable: true } },
       });
 
       return json(event, 200, { ok: true, statusCode: resp[0]?.statusCode || null });
-    } catch (err: any) {
+    } catch (err) {
       return json(event, 200, { ok: false, error: String(err?.message || err) });
     }
   }
 
-  // SMTP debug (kept for completeness)
+  // SMTP debug
   if (method === 'GET' && route === '/debug/smtp') {
     try {
       const cfg = envSMTP();
@@ -267,7 +225,7 @@ export const handler: Handler = async (event) => {
           note: 'Set EMAIL_* (or SMTP_*) vars and redeploy.',
         });
       }
-      const transporter = buildSMTPTransporter(cfg)!;
+      const transporter = buildSMTPTransporter(cfg);
       await transporter.verify();
       return json(event, 200, {
         ok: true,
@@ -275,16 +233,16 @@ export const handler: Handler = async (event) => {
         verify: 'ok',
         effective: { host: cfg.host, port: cfg.port, secure: cfg.secure, to: cfg.to, from: cfg.from },
       });
-    } catch (err: any) {
+    } catch (err) {
       return json(event, 200, { ok: false, configured: true, verify: 'fail', error: String(err?.message || err) });
     }
   }
 
-  // Contact handler
+  // Contact
   if (method === 'POST' && route === '/contact') {
     if (!event.body) return json(event, 400, { success: false, message: 'Missing body' });
 
-    let body: ContactBody;
+    let body;
     try {
       body = JSON.parse(event.body);
     } catch {
@@ -296,10 +254,10 @@ export const handler: Handler = async (event) => {
 
     try {
       const result = await sendEmail({
-        name: body.name!.trim(),
-        email: body.email!.trim(),
-        subject: body.subject!.trim(),
-        message: body.message!.trim(),
+        name: body.name.trim(),
+        email: body.email.trim(),
+        subject: body.subject.trim(),
+        message: body.message.trim(),
       });
 
       return json(event, 200, {
@@ -311,7 +269,7 @@ export const handler: Handler = async (event) => {
           ? 'Form received — email sending is disabled (provider not configured).'
           : 'Thanks! Your message has been sent.',
       });
-    } catch (err: any) {
+    } catch (err) {
       const msg = String(err?.message || err);
       return json(event, 500, { success: false, message: 'Failed to send email. Please try again later.', ...(DEBUG_EMAIL ? { error: msg } : {}) });
     }
