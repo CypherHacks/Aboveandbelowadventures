@@ -1,48 +1,84 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import {
-  Phone,
-  Mail,
-  MapPin,
-  Facebook,
-  Instagram,
-} from 'lucide-react';
+import { Phone, Mail, MapPin } from 'lucide-react';
+import { FaFacebook, FaInstagram, FaTripadvisor, FaWhatsapp } from 'react-icons/fa';
 import logo from '../assets/logo.png';
 
+type SocialItem = {
+  name: string;
+  href: string;
+  Icon: React.ElementType;
+  color: string; // tailwind gradient on hover
+  aria?: string;
+  title?: string;
+};
+
 const Footer: React.FC = () => {
+  // ---------- QUICK LINKS (added Gallery) ----------
   const quickLinks = [
     { name: 'Home', to: '/' },
+    { name: 'Gallery', to: '/gallery' },       // ✅ new fast link
     { name: 'Tour Packages', to: '/packages' },
     { name: 'About Us', to: '/about' },
     { name: 'Contact', to: '/contact' },
   ];
 
-  const socialLinks = [
-    { 
-      name: 'Facebook', 
-      icon: Facebook, 
-      href: 'https://facebook.com/yourcompany',
-      color: 'hover:from-blue-500 hover:to-blue-700'
+  // ---------- CONTACT INFO ----------
+  const PHONE_DISPLAY = '+962 79 7237623';
+  const EMAIL = 'aboveandbelowadventures@gmail.com';
+  const ADDRESS = 'The Royal Yacht Club of Jordan, Aqaba 77110';
+
+  // ---------- SOCIALS (match Contact page behavior) ----------
+  // Put your real public pages here:
+  const INSTAGRAM_URL = 'https://www.instagram.com/above_and_below_adventures/?igsh=MW9keDg1enE3amxtbg%3D%3D#';
+  const FACEBOOK_URL  = 'https://www.facebook.com/aboveandbelow.info/';
+  const TRIP_URL      = 'https://www.tripadvisor.com/Attraction_Review-g298101-d7368530-Reviews-Above_and_Below_Adventures_Day_Tours-Aqaba_Al_Aqabah_Governorate.html';
+
+const toWADigits = (raw: string, countryCode = '962') => {
+  let d = raw.replace(/\D/g, '');     // strip everything except digits
+  if (d.startsWith('00')) d = d.slice(2); // 00962… -> 962…
+  if (d.startsWith('0')) d = countryCode + d.slice(1); // 07… -> 9627…
+  return d; // e.g. 962797237623
+};
+
+// EXAMPLE USE
+const WHATSAPP_NUMBER = '+962 79 723 7623'; // or '079 723 7623' or '00962 79 723 7623'
+const waDigits = toWADigits(WHATSAPP_NUMBER, '962'); // -> '962797237623'
+const waMessage = "Hello! I’d like to plan a trip with Above & Below Adventures.";
+const WHATSAPP_URL = `https://wa.me/${waDigits}?text=${encodeURIComponent(waMessage)}`;
+
+  const socialLinks: SocialItem[] = [
+    {
+      name: 'Instagram',
+      Icon: FaInstagram,
+      href: INSTAGRAM_URL,
+      color: 'hover:from-pink-500 hover:to-purple-600',
+      aria: 'Instagram',
+      title: 'Instagram',
     },
-    { 
-      name: 'Instagram', 
-      icon: Instagram, 
-      href: 'https://instagram.com/yourcompany',
-      color: 'hover:from-pink-500 hover:to-purple-600'
+    {
+      name: 'Facebook',
+      Icon: FaFacebook,
+      href: FACEBOOK_URL,
+      color: 'hover:from-blue-500 hover:to-blue-700',
+      aria: 'Facebook',
+      title: 'Facebook',
     },
-    { 
-      name: 'WhatsApp', 
-      icon: 'https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg',
-      href: 'https://wa.me/yournumber',
+    {
+      name: 'Tripadvisor',
+      Icon: FaTripadvisor,
+      href: TRIP_URL,
+      color: 'hover:from-emerald-500 hover:to-teal-600',
+      aria: 'Tripadvisor',
+      title: 'Tripadvisor',
+    },
+    {
+      name: 'WhatsApp',
+      Icon: FaWhatsapp,
+      href: WHATSAPP_URL,
       color: 'hover:from-green-500 hover:to-green-700',
-      isImage: true
-    },
-    { 
-      name: 'TripAdvisor', 
-      icon: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAMAAABF0y+mAAAAilBMVEUA61sA7VwA8F0A814A1lMAvEkAq0IAwksA2VQA7FsA9F4A01IAgTIAJg8AAAAALhIAhTQA41gA3VYAayoAHQsAYSYAnD0AWiMACwUAeS8AFgkADwYAIw4AKxEAyU4A9l8AMxQAEwgAGwsAcSwAQRoAlToAaCkAoD4As0UATx8Ady4Ap0EAPRgAjTfyrsZwAAABNUlEQVR4Ac3RRYLEIBQE0PDpOFTcId7eff/rTWAzeoCpDfJwnP8cxogY+1M4nVzP8wNOXz1kR6JYSNgk6YmbntBalud5UKAsq7Su06Ys2870ZKHBvEc7KJ2MEyfikyu1GlokFh2Wz1r1y4qUOyFtWJdeyd1hjsVYDZvrnxVExC9tch3dy6ADiyGb29t0JJsx3rA7pl63d24nunhMebW7kYuuQRw9X5dsOipmKp3hTs0qkVG/63mKIftueuJJBt/wp13qY46Ucp98aFVNHq4WPZwnF9iiYNB6yajBMk4CLrOP0JZZlJ34dFFal2LicRbFgwrtPalG4lJ0uiwHquGRc+ZJeOTY8DewlMC9KtdtB9QA1NyI1fHxSprjeK+Gwutdv7qYf/2vIxSyzAlDMvW/ftUc4j/nA89zGjJlkfnSAAAAAElFTkSuQmCC',
-      href: 'https://tripadvisor.com/yourcompany',
-      color: 'hover:from-yellow-500 hover:to-green-600',
-      isImage: true
+      aria: 'WhatsApp chat',
+      title: 'WhatsApp',
     },
   ];
 
@@ -59,10 +95,10 @@ const Footer: React.FC = () => {
           {/* Company Info */}
           <div className="space-y-6">
             <div className="flex items-center space-x-3">
-              <img 
-                src={logo} 
-                alt="Company Logo" 
-                className="w-16 h-16 object-contain" 
+              <img
+                src={logo}
+                alt="Company Logo"
+                className="w-16 h-16 object-contain"
               />
               <div>
                 <h3 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
@@ -89,7 +125,7 @@ const Footer: React.FC = () => {
                 <li key={link.name}>
                   <NavLink
                     to={link.to}
-                    className={({ isActive }) => 
+                    className={({ isActive }) =>
                       `block py-2 pl-1 text-gray-400 hover:text-cyan-400 transition-all duration-300 font-light hover:pl-2 ${
                         isActive ? 'text-cyan-400 font-medium' : ''
                       }`
@@ -108,46 +144,42 @@ const Footer: React.FC = () => {
             <ul className="space-y-4">
               <li className="flex items-center space-x-3">
                 <Phone className="w-5 h-5 text-cyan-400" />
-                <span>+962 79 7237623</span>
+                <a href={`tel:${PHONE_DISPLAY.replace(/\D/g, '')}`} className="hover:text-cyan-300 transition-colors">
+                  {PHONE_DISPLAY}
+                </a>
               </li>
               <li className="flex items-center space-x-3">
                 <Mail className="w-5 h-5 text-cyan-400" />
-                <span>aboveandbelow2014@outlook.com</span>
+                <a href={`mailto:${EMAIL}`} className="hover:text-cyan-300 transition-colors">
+                  {EMAIL}
+                </a>
               </li>
               <li className="flex items-start space-x-3">
                 <MapPin className="w-5 h-5 text-cyan-400 mt-1" />
-                <span>
-                 The Royal Yacht Club of Jordan, Aqaba 77110
-                </span>
+                <span>{ADDRESS}</span>
               </li>
             </ul>
           </div>
 
-          {/* Social Links */}
+          {/* Connect With Us (now mirrors Contact page behavior) */}
           <div>
             <h4 className="text-xl font-bold mb-6 text-white">Connect With Us</h4>
             <div className="space-y-4">
-              {socialLinks.map((social) => (
+              {socialLinks.map(({ name, href, Icon, color, aria, title }) => (
                 <a
-                  key={social.name}
-                  href={social.href}
+                  key={name}
+                  href={href}
                   target="_blank"
                   rel="noopener noreferrer"
+                  aria-label={aria || name}
+                  title={title || name}
                   className="group flex items-center space-x-4 text-gray-400 hover:text-white transition-all duration-300"
                 >
-                  <div className={`w-10 h-10 bg-gray-800/50 backdrop-blur-sm rounded-xl flex items-center justify-center hover:bg-gradient-to-r ${social.color} transition-all duration-300 border border-gray-700/50 hover:border-transparent group-hover:scale-110`}>
-                    {social.isImage ? (
-                      <img 
-                        src={social.icon} 
-                        alt={social.name} 
-                        className="w-5 h-5 object-contain" 
-                      />
-                    ) : (
-                      <social.icon className="w-5 h-5" />
-                    )}
+                  <div className={`w-10 h-10 bg-gray-800/50 backdrop-blur-sm rounded-xl flex items-center justify-center hover:bg-gradient-to-r ${color} transition-all duration-300 border border-gray-700/50 hover:border-transparent group-hover:scale-110`}>
+                    <Icon className="w-5 h-5" />
                   </div>
                   <span className="font-light group-hover:translate-x-1 transition-transform duration-300">
-                    {social.name}
+                    {name}
                   </span>
                 </a>
               ))}
@@ -162,9 +194,9 @@ const Footer: React.FC = () => {
               © 2025 Your Company Name. All rights reserved. Licensed premium tour operator in Jordan.
             </div>
             <div className="flex space-x-6 text-sm">
-              <NavLink 
-                to="/privacy" 
-                className={({ isActive }) => 
+              <NavLink
+                to="/privacy"
+                className={({ isActive }) =>
                   `text-gray-400 hover:text-cyan-400 transition-colors duration-300 font-light ${
                     isActive ? 'text-cyan-400' : ''
                   }`
@@ -172,9 +204,9 @@ const Footer: React.FC = () => {
               >
                 Privacy Policy
               </NavLink>
-              <NavLink 
-                to="/terms" 
-                className={({ isActive }) => 
+              <NavLink
+                to="/terms"
+                className={({ isActive }) =>
                   `text-gray-400 hover:text-cyan-400 transition-colors duration-300 font-light ${
                     isActive ? 'text-cyan-400' : ''
                   }`
@@ -182,9 +214,9 @@ const Footer: React.FC = () => {
               >
                 Terms of Service
               </NavLink>
-              <NavLink 
-                to="/cookies" 
-                className={({ isActive }) => 
+              <NavLink
+                to="/cookies"
+                className={({ isActive }) =>
                   `text-gray-400 hover:text-cyan-400 transition-colors duration-300 font-light ${
                     isActive ? 'text-cyan-400' : ''
                   }`

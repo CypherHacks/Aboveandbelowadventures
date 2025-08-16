@@ -13,15 +13,45 @@ import {
   FiClock,
   FiGlobe,
   FiInstagram,
-  FiTwitter,
-  FiLinkedin,
   FiAlertTriangle,
 } from 'react-icons/fi';
+import { FaFacebook, FaWhatsapp, FaTripadvisor } from 'react-icons/fa';
 
 type ApiError = { msg: string; param: string };
 
 const ContactPage: React.FC = () => {
   const API_BASE = import.meta.env.VITE_API_URL || '/.netlify/functions/api';
+
+  // Map embed (public "pb" string; no API key needed)
+  const EMBED_PB_DEFAULT =
+    '!1m14!1m12!1m3!1d259.6334850964639!2d35.00049877480332!3d29.528781598829834!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e1!3m2!1sen!2sjo!4v1755376092024!5m2!1sen!2sjo';
+  const MAPS_EMBED_PB =
+    (import.meta.env.VITE_GOOGLE_MAPS_EMBED_PB as string | undefined) ||
+    EMBED_PB_DEFAULT;
+
+  // Public-facing details (display only)
+  const contactInfo = {
+    email: 'aboveandbelowadventures@gmail.com',
+    phone: '+962 79 723 7623',
+    address: 'The Royal Yacht Club of Jordan, Aqaba 77110',
+    hours: 'Mon - Sun: 9:00 AM – 8:00 PM',
+    website: 'www.aboveandbelowadventuresjo.com',
+    // Match the embed location so buttons open the same spot
+    coordinates: { lat: 29.528781598829834, lng: 35.00049877480332 },
+  };
+
+  // Social links (edit these)
+  const socials = {
+    instagram: 'https://www.instagram.com/above_and_below_adventures/?igsh=MW9keDg1enE3amxtbg%3D%3D#',
+    facebook: 'https://www.facebook.com/aboveandbelow.info/',
+    tripadvisor: 'https://www.tripadvisor.com/Attraction_Review-g298101-d7368530-Reviews-Above_and_Below_Adventures_Day_Tours-Aqaba_Al_Aqabah_Governorate.html', // e.g., https://www.tripadvisor.com/Attraction_Review-...
+    whatsappPhone: '+962 79 723 7623', // must include country code
+    whatsappMessage: 'Hello! I’d like to plan a trip with Above & Below Adventures.',
+  };
+  const whatsappDigits = socials.whatsappPhone.replace(/\D/g, '');
+  const whatsappLink = `https://wa.me/${whatsappDigits}?text=${encodeURIComponent(
+    socials.whatsappMessage
+  )}`;
 
   const [formData, setFormData] = useState({
     name: '',
@@ -34,15 +64,14 @@ const ContactPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  // ✅ Update these with your real public details (purely for display)
-  const contactInfo = {
-    email: 'contact@aboveandbelowadventuresjo.com', // REPLACE if you want a public email shown
-    phone: '+962 7X XXX XXXX', // REPLACE
-    address: 'Amman, Jordan', // REPLACE
-    hours: 'Mon - Sun: 9:00 AM – 8:00 PM',
-    website: 'www.aboveandbelowadventuresjo.com',
-    googleMapsApiKey: 'YOUR_GOOGLE_MAPS_API_KEY', // optional: put a key or leave as placeholder
-  };
+  // Buttons (Open in Maps / Directions)
+  const openUrl = contactInfo.coordinates
+    ? `https://www.google.com/maps/search/?api=1&query=${contactInfo.coordinates.lat},${contactInfo.coordinates.lng}`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contactInfo.address)}`;
+
+  const directionsUrl = contactInfo.coordinates
+    ? `https://www.google.com/maps/dir/?api=1&destination=${contactInfo.coordinates.lat},${contactInfo.coordinates.lng}`
+    : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(contactInfo.address)}`;
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -85,11 +114,9 @@ const ContactPage: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        // Map backend validation errors (if any)
         const apiErrors: ApiError[] | undefined = data?.errors;
         if (Array.isArray(apiErrors) && apiErrors.length) {
           const mapped: Record<string, string> = {};
@@ -105,12 +132,10 @@ const ContactPage: React.FC = () => {
         return;
       }
 
-      // Success 🎉
       setIsSuccess(true);
       setFormData({ name: '', email: '', subject: '', message: '' });
       setTimeout(() => setIsSuccess(false), 6000);
-    } catch (err) {
-      console.error(err);
+    } catch {
       setServerError('Network error. Please check your connection and try again.');
       setIsSuccess(false);
     } finally {
@@ -118,13 +143,7 @@ const ContactPage: React.FC = () => {
     }
   };
 
-  // Map embed URL (only if you add an API key)
-  const mapsSrc =
-    contactInfo.googleMapsApiKey && contactInfo.googleMapsApiKey !== 'YOUR_GOOGLE_MAPS_API_KEY'
-      ? `https://www.google.com/maps/embed/v1/place?key=${contactInfo.googleMapsApiKey}&q=${encodeURIComponent(
-          contactInfo.address
-        )}`
-      : '';
+  const mapsSrc = `https://www.google.com/maps/embed?pb=${MAPS_EMBED_PB}`;
 
   return (
     <>
@@ -151,109 +170,146 @@ const ContactPage: React.FC = () => {
             </p>
           </div>
 
-          <div className="grid lg:grid-cols-3 gap-12 max-w-7xl mx-auto">
-            {/* Contact Information Card */}
-            <div className="lg:col-span-1 space-y-8">
-              <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 backdrop-blur-xl p-8 rounded-3xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 hover:shadow-cyan-500/20 transition-all duration-500">
-                <h3 className="text-2xl font-bold text-white mb-8 flex items-center">
+          {/* 2 / 3 split on large screens */}
+          <div className="grid gap-12 max-w-7xl mx-auto lg:grid-cols-5">
+            {/* Contact Information Card (2/5) */}
+            <div className="lg:col-span-2 space-y-8">
+              <div className="bg-gradient-to-br from-gray-800/40 to-gray-900/40 backdrop-blur-xl p-6 md:p-8 rounded-3xl border border-cyan-500/20 shadow-2xl shadow-cyan-500/10 hover:shadow-cyan-500/20 transition-all duration-500">
+                <h3 className="text-2xl font-bold text-white mb-6 md:mb-8 flex items-center">
                   <FiPhone className="mr-3 text-cyan-400" />
                   Get in Touch
                 </h3>
 
-                <div className="space-y-6">
-                  <div className="flex items-start space-x-4 group hover:bg-cyan-500/10 p-3 rounded-xl transition-all">
-                    <div className="bg-gradient-to-r from-cyan-500 to-blue-600 p-2 rounded-lg">
+                <div className="space-y-3 md:space-y-4">
+                  {/* Email row */}
+                  <div className="w-full min-h-[64px] flex items-center space-x-4 rounded-xl p-3 transition-colors hover:bg-cyan-500/10">
+                    <div className="shrink-0 bg-gradient-to-r from-cyan-500 to-blue-600 p-2 rounded-lg">
                       <FiMail className="text-white text-sm" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-gray-400 text-sm">Email</p>
                       <a
                         href={`mailto:${contactInfo.email}`}
-                        className="text-white hover:text-cyan-400 transition-colors font-medium break-all"
+                        title={contactInfo.email}
+                        className="block text-white hover:text-cyan-400 transition-colors font-medium truncate"
                       >
                         {contactInfo.email}
                       </a>
                     </div>
                   </div>
 
-                  <div className="flex items-start space-x-4 group hover:bg-purple-500/10 p-3 rounded-xl transition-all">
-                    <div className="bg-gradient-to-r from-purple-500 to-pink-600 p-2 rounded-lg">
+                  {/* Phone row */}
+                  <div className="w-full min-h-[64px] flex items-center space-x-4 rounded-xl p-3 transition-colors hover:bg-purple-500/10">
+                    <div className="shrink-0 bg-gradient-to-r from-purple-500 to-pink-600 p-2 rounded-lg">
                       <FiPhone className="text-white text-sm" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-gray-400 text-sm">Phone</p>
                       <a
                         href={`tel:${contactInfo.phone.replace(/\D/g, '')}`}
-                        className="text-white hover:text-purple-400 transition-colors font-medium"
+                        title={contactInfo.phone}
+                        className="block text-white hover:text-purple-400 transition-colors font-medium truncate"
                       >
                         {contactInfo.phone}
                       </a>
                     </div>
                   </div>
 
-                  <div className="flex items-start space-x-4 group hover:bg-green-500/10 p-3 rounded-xl transition-all">
-                    <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-2 rounded-lg">
+                  {/* Address row */}
+                  <div className="w-full min-h-[64px] flex items-center space-x-4 rounded-xl p-3 transition-colors hover:bg-green-500/10">
+                    <div className="shrink-0 bg-gradient-to-r from-green-500 to-emerald-600 p-2 rounded-lg">
                       <FiMapPin className="text-white text-sm" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-gray-400 text-sm">Address</p>
-                      <p className="text-white font-medium">{contactInfo.address}</p>
+                      <p className="text-white font-medium truncate" title={contactInfo.address}>
+                        {contactInfo.address}
+                      </p>
                     </div>
                   </div>
 
-                  <div className="flex items-start space-x-4 group hover:bg-yellow-500/10 p-3 rounded-xl transition-all">
-                    <div className="bg-gradient-to-r from-yellow-500 to-orange-600 p-2 rounded-lg">
+                  {/* Hours row */}
+                  <div className="w-full min-h-[64px] flex items-center space-x-4 rounded-xl p-3 transition-colors hover:bg-yellow-500/10">
+                    <div className="shrink-0 bg-gradient-to-r from-yellow-500 to-orange-600 p-2 rounded-lg">
                       <FiClock className="text-white text-sm" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-gray-400 text-sm">Business Hours</p>
-                      <p className="text-white font-medium">{contactInfo.hours}</p>
+                      <p className="text-white font-medium truncate" title={contactInfo.hours}>
+                        {contactInfo.hours}
+                      </p>
                     </div>
                   </div>
 
-                  <div className="flex items-start space-x-4 group hover:bg-indigo-500/10 p-3 rounded-xl transition-all">
-                    <div className="bg-gradient-to-r from-indigo-500 to-blue-600 p-2 rounded-lg">
+                  {/* Website row */}
+                  <div className="w-full min-h-[64px] flex items-center space-x-4 rounded-xl p-3 transition-colors hover:bg-indigo-500/10">
+                    <div className="shrink-0 bg-gradient-to-r from-indigo-500 to-blue-600 p-2 rounded-lg">
                       <FiGlobe className="text-white text-sm" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-gray-400 text-sm">Website</p>
-                      <p className="text-white font-medium">{contactInfo.website}</p>
+                      <p className="text-white font-medium truncate" title={contactInfo.website}>
+                        {contactInfo.website}
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                {/* Socials */}
-                <div className="mt-8 pt-8 border-t border-gray-700">
+                {/* Socials (Instagram + Facebook + Tripadvisor + WhatsApp) */}
+                <div className="mt-8 pt-6 border-t border-gray-700">
                   <p className="text-gray-400 text-sm mb-4">Follow Us</p>
-                  <div className="flex space-x-4">
+                  <div className="flex flex-wrap gap-4">
+                    {/* Instagram */}
                     <a
-                      href="#"
+                      href={socials.instagram}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="bg-gradient-to-r from-pink-500 to-rose-600 p-3 rounded-xl hover:scale-110 transition-transform"
                       aria-label="Instagram"
+                      title="Instagram"
                     >
                       <FiInstagram className="text-white" />
                     </a>
+                    {/* Facebook */}
                     <a
-                      href="#"
-                      className="bg-gradient-to-r from-blue-500 to-cyan-600 p-3 rounded-xl hover:scale-110 transition-transform"
-                      aria-label="Twitter"
+                      href={socials.facebook}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-gradient-to-r from-blue-600 to-blue-700 p-3 rounded-xl hover:scale-110 transition-transform"
+                      aria-label="Facebook"
+                      title="Facebook"
                     >
-                      <FiTwitter className="text-white" />
+                      <FaFacebook className="text-white" />
                     </a>
+                    {/* Tripadvisor */}
                     <a
-                      href="#"
-                      className="bg-gradient-to-r from-blue-600 to-indigo-600 p-3 rounded-xl hover:scale-110 transition-transform"
-                      aria-label="LinkedIn"
+                      href={socials.tripadvisor}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-gradient-to-r from-emerald-500 to-teal-600 p-3 rounded-xl hover:scale-110 transition-transform"
+                      aria-label="Tripadvisor"
+                      title="Tripadvisor"
                     >
-                      <FiLinkedin className="text-white" />
+                      <FaTripadvisor className="text-white" />
+                    </a>
+                    {/* WhatsApp */}
+                    <a
+                      href={whatsappLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-gradient-to-r from-green-500 to-green-600 p-3 rounded-xl hover:scale-110 transition-transform"
+                      aria-label="WhatsApp"
+                      title="WhatsApp"
+                    >
+                      <FaWhatsapp className="text-white" />
                     </a>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Contact Form + Map */}
-            <div className="lg:col-span-2 space-y-8">
+            {/* Contact Form + Map (3/5) */}
+            <div className="lg:col-span-3 space-y-8">
               {/* Success */}
               {isSuccess && (
                 <div className="p-6 bg-gradient-to-r from-green-900/50 to-emerald-900/50 border border-green-500/50 rounded-3xl backdrop-blur-sm">
@@ -262,7 +318,9 @@ const ContactPage: React.FC = () => {
                       <FiCheckCircle className="text-white text-xl" />
                     </div>
                     <div>
-                      <h3 className="text-green-100 font-bold text-lg">Message sent successfully!</h3>
+                      <h3 className="text-green-100 font-bold text-lg">
+                        Message sent successfully!
+                      </h3>
                       <p className="text-green-200">
                         Thanks for reaching out. We&apos;ll get back to you shortly.
                       </p>
@@ -398,7 +456,9 @@ const ContactPage: React.FC = () => {
                   type="submit"
                   disabled={isSubmitting}
                   className={`w-full py-5 rounded-3xl bg-gradient-to-r from-cyan-500 via-purple-600 to-pink-600 text-white font-bold text-lg flex items-center justify-center space-x-3 transition-all duration-300 transform hover:scale-105 hover:shadow-2xl hover:shadow-cyan-500/25 ${
-                    isSubmitting ? 'opacity-70 cursor-not-allowed' : 'hover:from-cyan-400 hover:via-purple-500 hover:to-pink-500'
+                    isSubmitting
+                      ? 'opacity-70 cursor-not-allowed'
+                      : 'hover:from-cyan-400 hover:via-purple-500 hover:to-pink-500'
                   }`}
                 >
                   {isSubmitting ? (
@@ -409,7 +469,14 @@ const ContactPage: React.FC = () => {
                         fill="none"
                         viewBox="0 0 24 24"
                       >
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
                         <path
                           className="opacity-75"
                           fill="currentColor"
@@ -427,7 +494,7 @@ const ContactPage: React.FC = () => {
                 </button>
               </form>
 
-              {/* Map (only renders if you added a Google Maps key) */}
+              {/* Map (free Google public embed) */}
               <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl p-8 rounded-3xl border border-green-500/20 shadow-2xl shadow-green-500/10">
                 <h3 className="text-3xl font-bold text-white mb-6 flex items-center">
                   <FiMapPin className="mr-3 text-green-400" />
@@ -435,29 +502,23 @@ const ContactPage: React.FC = () => {
                 </h3>
 
                 <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-green-500/20">
-                  {mapsSrc ? (
-                    <iframe
-                      src={mapsSrc}
-                      width="100%"
-                      height="400"
-                      style={{ border: 0 }}
-                      allowFullScreen
-                      loading="lazy"
-                      referrerPolicy="no-referrer-when-downgrade"
-                      className="rounded-2xl"
-                      title="Google Map"
-                    />
-                  ) : (
-                    <div className="h-64 flex items-center justify-center text-green-200 text-sm bg-black/20">
-                      Add a Google Maps API key in <code className="mx-1">contactInfo.googleMapsApiKey</code> to show the map.
-                    </div>
-                  )}
+                  <iframe
+                    src={mapsSrc}
+                    width="100%"
+                    height="400"
+                    style={{ border: 0 }}
+                    allowFullScreen
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    className="rounded-2xl"
+                    title="Location Map"
+                  />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none rounded-2xl" />
                 </div>
 
                 <div className="mt-6 flex flex-wrap gap-4">
                   <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contactInfo.address)}`}
+                    href={openUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-3 rounded-xl text-white font-medium hover:from-blue-500 hover:to-blue-600 transition-all transform hover:scale-105"
@@ -467,7 +528,7 @@ const ContactPage: React.FC = () => {
                   </a>
 
                   <a
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(contactInfo.address)}`}
+                    href={directionsUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center space-x-2 bg-gradient-to-r from-green-600 to-green-700 px-6 py-3 rounded-xl text-white font-medium hover:from-green-500 hover:to-green-600 transition-all transform hover:scale-105"
