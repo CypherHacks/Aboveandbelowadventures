@@ -40,7 +40,7 @@ const ContactPage: React.FC = () => {
   const socials = {
     instagram: 'https://www.instagram.com/above_and_below_adventures/?igsh=MW9keDg1enE3amxtbg%3D%3D#',
     facebook: 'https://www.facebook.com/aboveandbelow.info/',
-    tripadvisor: 'https://www.tripadvisor.com/Attraction_Review-...html', // e.g., https://www.tripadvisor.com/Attraction_Review-...
+    tripadvisor: 'https://www.tripadvisor.com/Attraction_Review-g298101-d7368530-Reviews-Above_and_Below_Adventures_Day_Tours-Aqaba_Al_Aqabah_Governorate.html', // e.g., https://www.tripadvisor.com/Attraction_Review-...
     whatsappPhone: '+962 79 723 7623', // must include country code
     whatsappMessage: 'Hello! I’d like to plan a trip with Above & Below Adventures.',
   };
