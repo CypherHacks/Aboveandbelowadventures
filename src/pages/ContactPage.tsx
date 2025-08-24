@@ -209,10 +209,7 @@ const ContactPage: React.FC = () => {
             </p>
 
             {/* Live regions for a11y */}
-            <div
-              aria-live="polite"
-              className="sr-only"
-            >
+            <div aria-live="polite" className="sr-only">
               {isSuccess ? 'Message sent successfully!' : serverError || ''}
             </div>
 
@@ -449,11 +446,12 @@ const ContactPage: React.FC = () => {
                           placeholder="Your full name"
                           autoComplete="name"
                           inputMode="text"
-                          className={`w-full text-base pl-10 pr-3 py-3 rounded-xl bg-white/7.5 backdrop-blur border ${
+                          className={`w-full text-base pl-10 pr-3 py-3 rounded-xl bg-white/10 backdrop-blur border ${
                             errors.name ? 'border-rose-500/50' : 'border-white/10'
-                          } focus:outline-none focus:ring-2 focus:ring-purple-500/40 text-white`}
+                          } focus:outline-none focus:ring-2 focus:ring-purple-500/40 text-white placeholder-white/60 caret-white selection:bg-purple-500/30`}
                           aria-invalid={!!errors.name}
                           aria-describedby={errors.name ? 'name-error' : undefined}
+                          style={{ WebkitTextFillColor: '#ffffff' }}
                         />
                       </div>
                       {errors.name && (
@@ -482,11 +480,12 @@ const ContactPage: React.FC = () => {
                           placeholder="you@example.com"
                           autoComplete="email"
                           inputMode="email"
-                          className={`w-full text-base pl-10 pr-3 py-3 rounded-xl bg-white/7.5 backdrop-blur border ${
+                          className={`w-full text-base pl-10 pr-3 py-3 rounded-xl bg-white/10 backdrop-blur border ${
                             errors.email ? 'border-rose-500/50' : 'border-white/10'
-                          } focus:outline-none focus:ring-2 focus:ring-purple-500/40 text-white`}
+                          } focus:outline-none focus:ring-2 focus:ring-purple-500/40 text-white placeholder-white/60 caret-white selection:bg-purple-500/30`}
                           aria-invalid={!!errors.email}
                           aria-describedby={errors.email ? 'email-error' : undefined}
+                          style={{ WebkitTextFillColor: '#ffffff' }}
                         />
                       </div>
                       {errors.email && (
@@ -511,11 +510,12 @@ const ContactPage: React.FC = () => {
                         placeholder="Trip type, dates, or topic"
                         autoComplete="off"
                         inputMode="text"
-                        className={`w-full text-base px-3 py-3 rounded-xl bg-white/7.5 backdrop-blur border ${
+                        className={`w-full text-base px-3 py-3 rounded-xl bg-white/10 backdrop-blur border ${
                           errors.subject ? 'border-rose-500/50' : 'border-white/10'
-                        } focus:outline-none focus:ring-2 focus:ring-purple-500/40 text-white`}
+                        } focus:outline-none focus:ring-2 focus:ring-purple-500/40 text-white placeholder-white/60 caret-white selection:bg-purple-500/30`}
                         aria-invalid={!!errors.subject}
                         aria-describedby={errors.subject ? 'subject-error' : undefined}
+                        style={{ WebkitTextFillColor: '#ffffff' }}
                       />
                       {errors.subject && (
                         <p id="subject-error" className="mt-1 text-sm text-rose-300">
@@ -541,11 +541,12 @@ const ContactPage: React.FC = () => {
                           onChange={handleChange}
                           rows={6}
                           placeholder="Tell us about your trip, ideas, or any questions you have..."
-                          className={`w-full text-base pl-10 pr-3 py-3 rounded-xl bg-white/7.5 backdrop-blur border ${
+                          className={`w-full text-base pl-10 pr-3 py-3 rounded-xl bg-white/10 backdrop-blur border ${
                             errors.message ? 'border-rose-500/50' : 'border-white/10'
-                          } focus:outline-none focus:ring-2 focus:ring-purple-500/40 text-white resize-y`}
+                          } focus:outline-none focus:ring-2 focus:ring-purple-500/40 text-white placeholder-white/60 caret-white selection:bg-purple-500/30 resize-y`}
                           aria-invalid={!!errors.message}
                           aria-describedby={errors.message ? 'message-error' : undefined}
+                          style={{ WebkitTextFillColor: '#ffffff' }}
                         />
                       </div>
                       {errors.message && (
