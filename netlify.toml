@@ -2,7 +2,7 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# API passthrough to Netlify Functions
+# API passthrough
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
@@ -15,21 +15,53 @@
   status = 301
   force = true
 
-# Dynamic sitemap served by a Netlify Function
+# Dynamic sitemap function
 [[redirects]]
   from = "/sitemap.xml"
   to = "/.netlify/functions/sitemap"
   status = 200
   force = true
 
-# Serve robots.txt as a static file
+# Robots.txt (static)
 [[redirects]]
   from = "/robots.txt"
   to = "/robots.txt"
   status = 200
   force = true
 
-# Remove trailing slashes (but DON'T match the root "/")
+# --- ICON / LOGO OVERRIDES ---
+[[redirects]]
+  from = "/logo.png"
+  to = "/logo.png"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/favicon.ico"
+  to = "/favicon.ico"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/apple-touch-icon.png"
+  to = "/apple-touch-icon.png"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/android-chrome-192x192.png"
+  to = "/android-chrome-192x192.png"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/android-chrome-512x512.png"
+  to = "/android-chrome-512x512.png"
+  status = 200
+  force = true
+# -----------------------------
+
+# Remove trailing slashes
 [[redirects]]
   from = "/:path/"
   to = "/:path"
@@ -43,13 +75,13 @@
   status = 301
   force = true
 
-# SPA fallback — KEEP THIS LAST
+# SPA fallback — KEEP LAST
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
-# ---------- Caching for static assets ----------
+# ---------- Caching ----------
 [[headers]]
   for = "/assets/*"
   [headers.values]
@@ -60,7 +92,7 @@
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
-# ---------- Security headers ----------
+# ---------- Security ----------
 [[headers]]
   for = "/*"
   [headers.values]
@@ -68,7 +100,7 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
 
-# ---------- Noindex for previews (safe staging) ----------
+# ---------- Noindex for previews ----------
 [context.deploy-preview]
   [[context.deploy-preview.headers]]
     for = "/*"
