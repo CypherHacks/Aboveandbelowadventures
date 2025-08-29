@@ -29,10 +29,10 @@
   status = 200
   force = true
 
-# Remove trailing slashes (normalize URLs)
+# Remove trailing slashes (but DON'T match the root "/")
 [[redirects]]
-  from = "/*/"
-  to = "/:splat"
+  from = "/:path/"
+  to = "/:path"
   status = 301
   force = true
 
