@@ -16,6 +16,7 @@ import {
   FiAlertTriangle,
 } from 'react-icons/fi';
 import { FaFacebook, FaWhatsapp, FaTripadvisor } from 'react-icons/fa';
+import Seo from '../components/Seo';
 
 type ApiError = { msg: string; param: string };
 
@@ -158,6 +159,46 @@ const ContactPage: React.FC = () => {
   return (
     <>
       <Header />
+      <Seo
+  title="Contact Above & Below Adventures — Aqaba, Jordan"
+  description="Questions or custom itineraries? Contact Above & Below Adventures in Aqaba. Phone +962 79 723 7623 • Email aboveandbelowadventures@gmail.com • Open daily 9:00–20:00."
+  canonicalPath="/contact"
+  image="/assets/logo.png"
+  jsonLd={{
+    '@type': 'TravelAgency',
+    name: 'Above & Below Adventures',
+    url: import.meta.env.VITE_SITE_URL,
+    telephone: '+962 79 723 7623',
+    email: 'aboveandbelowadventures@gmail.com',
+    image: `${import.meta.env.VITE_SITE_URL}/assets/logo.png`,
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: 'The Royal Yacht Club of Jordan',
+      addressLocality: 'Aqaba',
+      postalCode: '77110',
+      addressCountry: 'JO'
+    },
+    geo: {
+      '@type': 'GeoCoordinates',
+      latitude: 29.528769,
+      longitude: 35.000269
+    },
+    openingHoursSpecification: [{
+      '@type': 'OpeningHoursSpecification',
+      dayOfWeek: ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'],
+      opens: '09:00',
+      closes: '20:00'
+    }],
+    areaServed: 'Jordan',
+    sameAs: [
+      'https://www.facebook.com/aboveandbelow.info/',
+      'https://www.tripadvisor.com/Attraction_Review-g298101-d7368530-Reviews-Above_and_Below_Adventures_Day_Tours-Aqaba_Al_Aqabah_Governorate.html',
+      'https://www.instagram.com/above_and_below_adventures/?igsh=MW9keDg1enE3amxtbg%3D%3D#'
+    ],
+    hasMap: `https://www.google.com/maps?q=29.528769,35.000269&z=18&hl=en&output=embed&t=k&v=2`
+  }}
+/>
+
       <main className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative overflow-hidden">
         {/* Animated background elements */}
         <div className="pointer-events-none absolute inset-0">

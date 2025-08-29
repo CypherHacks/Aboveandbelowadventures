@@ -2,11 +2,62 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Mobile -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Fallback SEO (pages will override via <Seo />) -->
     <title>Jordan Tourism Company Website</title>
+    <meta
+      name="description"
+      content="Curated tours and travel experiences across Jordan—Petra, Wadi Rum, Dead Sea and more. Book easily, travel smoothly."
+    />
+    <meta name="robots" content="index,follow" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#111827" />
+
+    <!-- Favicon & PWA (place these files in /public) -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5A67D8" />
+
+    <!-- Social fallbacks (per-page tags will override via <Seo />) -->
+    <meta property="og:site_name" content="Jordan Tourism" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Jordan Tourism Company Website" />
+    <meta
+      property="og:description"
+      content="Curated tours and travel experiences across Jordan—Petra, Wadi Rum, Dead Sea and more."
+    />
+    <!-- Put a stable image in /public/og.jpg (1200x630 recommended) -->
+    <meta property="og:image" content="/og.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- (Optional) performance hints — fill these if you use them -->
+    <!-- <link rel="preconnect" href="https://YOUR-SUPABASE-PROJECT.supabase.co" crossorigin /> -->
+    <!-- <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /> -->
+    <!-- <link rel="dns-prefetch" href="https://YOUR-IMG-CDN.example" /> -->
   </head>
   <body>
+    <noscript>
+      <style>
+        body { background:#111827; color:#e5e7eb; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,'Helvetica Neue',Arial,'Apple Color Emoji','Segoe UI Emoji'; }
+        .noscript-nav a { color:#a78bfa; margin-right:.75rem; }
+      </style>
+      <div class="noscript-nav" role="navigation" aria-label="Primary">
+        <strong>JavaScript is required for the full experience.</strong>
+        <div>
+          <a href="/">Home</a>
+          <a href="/packages">Packages</a>
+          <a href="/gallery">Gallery</a>
+          <a href="/about">About</a>
+          <a href="/contact">Contact</a>
+        </div>
+      </div>
+    </noscript>
+
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

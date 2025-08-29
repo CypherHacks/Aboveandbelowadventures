@@ -144,7 +144,7 @@ const WHATSAPP_URL = `https://wa.me/${waDigits}?text=${encodeURIComponent(waMess
             <ul className="space-y-4">
               <li className="flex items-center space-x-3">
                 <Phone className="w-5 h-5 text-cyan-400" />
-                <a href={`tel:${PHONE_DISPLAY.replace(/\D/g, '')}`} className="hover:text-cyan-300 transition-colors">
+                <a href={`tel:+${PHONE_DISPLAY.replace(/\D/g, '')}`} className="hover:text-cyan-300 transition-colors">
                   {PHONE_DISPLAY}
                 </a>
               </li>

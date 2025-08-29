@@ -9,6 +9,7 @@ import PackageLoader from '../components/PackageLoader';
 import { supabase } from '../lib/supabaseClient';
 import type { Package, ItineraryItem, Review } from '../types/package';
 import * as Icons from 'lucide-react';
+import Seo from '../components/Seo';
 
 type RawItineraryItem = {
   time: string;
@@ -177,6 +178,50 @@ const PackageDetailPage: React.FC = () => {
 
   return (
     <>
+    {(() => {
+  const { packageId } = useParams<{ packageId: string }>();
+
+  // Fallbacks keep tags stable while data loads
+  const title = pkg?.name ? `${pkg.name} — Jordan Tour | Above & Below Adventures` : 'Jordan Tour Package | Above & Below Adventures';
+  const description = pkg?.description || 'Full itinerary, inclusions, and booking for this Jordan tour package.';
+  const image = (pkg?.image || pkg?.gallery?.[0] || '/assets/jordan.png');
+  const CURRENCY = import.meta.env.VITE_CURRENCY || 'USD';
+
+  const tripLd = {
+    '@type': 'TouristTrip',
+    name: pkg?.name || 'Jordan Tour Package',
+    description,
+    image,
+    url: `${import.meta.env.VITE_SITE_URL}/packages/${packageId}`,
+    ...(pkg?.rating ? {
+      aggregateRating: {
+        '@type': 'AggregateRating',
+        ratingValue: pkg.rating,
+        reviewCount: pkg.reviews || (pkg.reviewsList?.length ?? 0)
+      }
+    } : {}),
+    ...(pkg?.price ? {
+      offers: {
+        '@type': 'Offer',
+        price: String(pkg.price),
+        priceCurrency: CURRENCY,
+        availability: 'http://schema.org/InStock',
+        url: `${import.meta.env.VITE_SITE_URL}/packages/${packageId}`
+      }
+    } : {})
+  };
+
+  return (
+    <Seo
+      title={title}
+      description={description}
+      canonicalPath={`/packages/${packageId}`}
+      image={image}
+      jsonLd={tripLd}
+    />
+  );
+})()}
+
       <Header />
       <div className="bg-gradient-to-b from-gray-900 to-purple-900 min-h-screen pb-12 relative">
         <div className="container mx-auto px-4 py-6">

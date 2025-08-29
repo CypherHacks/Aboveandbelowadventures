@@ -29,7 +29,10 @@ const Header: React.FC = () => {
 
   return (
     <header className="sticky top-0 left-0 right-0 z-50">
-      <nav className={`transition-all duration-300 ${
+      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:z-[60] focus:top-2 focus:left-2 bg-gray-900 text-white px-3 py-2 rounded">
+  Skip to content
+</a>
+      <nav aria-label="Main" className={`transition-all duration-300 ${
         isScrolled 
           ? 'backdrop-blur-xl' 
           : 'backdrop-blur-lg'
@@ -60,11 +63,12 @@ const Header: React.FC = () => {
 </div>
               
               {/* Company Name with Gradient */}
-              <div className="hidden sm:block">
-                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-cyan-200 via-sky-300 to-cyan-400 bg-clip-text text-transparent group-hover:from-cyan-300 group-hover:via-sky-400 group-hover:to-cyan-500 transition-all duration-300">
-                    Above & Below Adventures</h1>
-                <div className="h-0.5 w-0 bg-gradient-to-r from-cyan-500 to-blue-500 group-hover:w-full transition-all duration-500"></div>
-              </div>
+              <div className="hidden sm:block" aria-label="Site name">
+    <span className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-cyan-200 via-sky-300 to-cyan-400 bg-clip-text text-transparent group-hover:from-cyan-300 group-hover:via-sky-400 group-hover:to-cyan-500 transition-all duration-300">
+      Above & Below Adventures
+    </span>
+    <div className="h-0.5 w-0 bg-gradient-to-r from-cyan-500 to-blue-500 group-hover:w-full transition-all duration-500"></div>
+  </div>
             </NavLink>
           </div>
 

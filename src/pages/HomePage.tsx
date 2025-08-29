@@ -7,6 +7,7 @@ import PackageLoader from '../components/PackageLoader';
 import { motion } from 'framer-motion';
 import { Heart, Leaf, Star, Globe, MapPin, Camera, Car, ExternalLink } from 'lucide-react';
 import HeroImage from '../assets/jordan.png'
+import Seo from '../components/Seo';
 
 type Destination = {
   id: string;
@@ -200,6 +201,24 @@ const HomePage: React.FC = () => {
 
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      <Seo
+  title="Above & Below Adventures — Jordan Tours & Travel"
+  description="Curated tours across Jordan: Petra, Wadi Rum, the Dead Sea and more. Flexible itineraries, local guides, and easy booking."
+  canonicalPath="/"
+  image="/assets/jordan.png"
+  jsonLd={{
+    '@type': 'Organization',
+    name: 'Above & Below Adventures',
+    url: import.meta.env.VITE_SITE_URL,
+    logo: `${import.meta.env.VITE_SITE_URL}/assets/logo.png`,
+    sameAs: [
+      'https://www.facebook.com/aboveandbelow.info/',
+      'https://www.tripadvisor.com/Attraction_Review-g298101-d7368530-Reviews-Above_and_Below_Adventures_Day_Tours-Aqaba_Al_Aqabah_Governorate.html',
+      'https://www.instagram.com/above_and_below_adventures/?igsh=MW9keDg1enE3amxtbg%3D%3D#'
+    ]
+  }}
+/>
+
       <Header />
 
       {/* Hero Section */}

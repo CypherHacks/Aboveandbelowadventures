@@ -8,6 +8,8 @@ import PackageLoader from '../components/PackageLoader';
 import FeaturedPackages from '../components/FeaturedPackages';
 import { getPackages } from '../services/packages';
 import type { Package } from '../types/package';
+import Seo from '../components/Seo';
+
 
 const PackagesPage: React.FC = () => {
   const navigate = useNavigate();
@@ -39,6 +41,12 @@ const PackagesPage: React.FC = () => {
   return (
     <>
       <Header />
+      <Seo
+  title="Jordan Tour Packages & Itineraries | Above & Below Adventures"
+  description="Browse our curated Jordan tour packages—Petra, Wadi Rum, Dead Sea, and more. Transparent pricing, flexible dates, local experts."
+  canonicalPath="/packages"
+/>
+
       <main className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-indigo-900 animate-gradient">
         <section className="container mx-auto px-4 py-16">
           {/* Page Title */}
