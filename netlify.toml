@@ -2,55 +2,48 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# --- API passthrough to Netlify Functions
+# API passthrough to Netlify Functions
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
 
-# --- Force HTTPS
+# Force HTTPS
 [[redirects]]
   from = "http://*"
   to = "https://:splat"
   status = 301
   force = true
 
-# --- Canonical host: www -> apex (flip if you prefer www)
-[[redirects]]
-  from = "https://www.aboveandbelowadventuresjo.com/*"
-  to = "https://aboveandbelowadventuresjo.com/:splat"
-  status = 301
-  force = true
-
-# --- Dynamic sitemap served by a Netlify Function
+# Dynamic sitemap served by a Netlify Function
 [[redirects]]
   from = "/sitemap.xml"
   to = "/.netlify/functions/sitemap"
   status = 200
   force = true
 
-# --- Serve robots.txt as a static file
+# Serve robots.txt as a static file
 [[redirects]]
   from = "/robots.txt"
   to = "/robots.txt"
   status = 200
   force = true
 
-# --- Remove trailing slashes (normalize URLs)
+# Remove trailing slashes (normalize URLs)
 [[redirects]]
   from = "/*/"
   to = "/:splat"
   status = 301
   force = true
 
-# --- /index.html -> /
+# /index.html -> /
 [[redirects]]
   from = "/index.html"
   to = "/"
   status = 301
   force = true
 
-# --- SPA fallback (KEEP THIS LAST)
+# SPA fallback — KEEP THIS LAST
 [[redirects]]
   from = "/*"
   to = "/index.html"
