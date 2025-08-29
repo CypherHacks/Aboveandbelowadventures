@@ -2,60 +2,61 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# API passthrough
+# --- API passthrough to Netlify Functions
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
 
-# Force HTTPS
+# --- Force HTTPS
 [[redirects]]
   from = "http://*"
   to = "https://:splat"
   status = 301
   force = true
 
-# Canonical host: www -> apex (flip if you prefer www)
+# --- Canonical host: www -> apex (flip if you prefer www)
 [[redirects]]
   from = "https://www.aboveandbelowadventuresjo.com/*"
   to = "https://aboveandbelowadventuresjo.com/:splat"
   status = 301
   force = true
 
-# Serve these files as-is (so SPA doesn't catch them)
+# --- Dynamic sitemap served by a Netlify Function
 [[redirects]]
   from = "/sitemap.xml"
-  to = "/sitemap.xml"
+  to = "/.netlify/functions/sitemap"
   status = 200
   force = true
 
+# --- Serve robots.txt as a static file
 [[redirects]]
   from = "/robots.txt"
   to = "/robots.txt"
   status = 200
   force = true
 
-# Remove trailing slashes
+# --- Remove trailing slashes (normalize URLs)
 [[redirects]]
   from = "/*/"
   to = "/:splat"
   status = 301
   force = true
 
-# /index.html -> /
+# --- /index.html -> /
 [[redirects]]
   from = "/index.html"
   to = "/"
   status = 301
   force = true
 
-# SPA fallback — KEEP LAST
+# --- SPA fallback (KEEP THIS LAST)
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
-# ---------- Caching ----------
+# ---------- Caching for static assets ----------
 [[headers]]
   for = "/assets/*"
   [headers.values]
@@ -66,7 +67,7 @@
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
-# ---------- Security ----------
+# ---------- Security headers ----------
 [[headers]]
   for = "/*"
   [headers.values]
@@ -74,7 +75,7 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
 
-# ---------- Noindex for previews ----------
+# ---------- Noindex for previews (safe staging) ----------
 [context.deploy-preview]
   [[context.deploy-preview.headers]]
     for = "/*"
