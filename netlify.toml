@@ -2,47 +2,60 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# --- API passthrough (keep)
+# API passthrough
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
 
-# --- Force HTTPS
+# Force HTTPS
 [[redirects]]
   from = "http://*"
   to = "https://:splat"
   status = 301
   force = true
 
-# --- Canonical host: www -> apex (flip these two if you prefer www)
+# Canonical host: www -> apex (flip if you prefer www)
 [[redirects]]
-  from = "https://www.aboveandbelowadventuresjo..com/*"
-  to = "https://aboveandbelowadventuresjo..com/:splat"
+  from = "https://www.aboveandbelowadventuresjo.com/*"
+  to = "https://aboveandbelowadventuresjo.com/:splat"
   status = 301
   force = true
 
-# --- Remove trailing slashes (normalize URLs)
+# Serve these files as-is (so SPA doesn't catch them)
+[[redirects]]
+  from = "/sitemap.xml"
+  to = "/sitemap.xml"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/robots.txt"
+  to = "/robots.txt"
+  status = 200
+  force = true
+
+# Remove trailing slashes
 [[redirects]]
   from = "/*/"
   to = "/:splat"
   status = 301
   force = true
 
-# --- /index.html -> /
+# /index.html -> /
 [[redirects]]
   from = "/index.html"
   to = "/"
   status = 301
   force = true
 
-# --- SPA fallback (keep)
+# SPA fallback — KEEP LAST
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
-# ---------- Caching for static assets ----------
+# ---------- Caching ----------
 [[headers]]
   for = "/assets/*"
   [headers.values]
@@ -53,7 +66,7 @@
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
-# ---------- Helpful security headers ----------
+# ---------- Security ----------
 [[headers]]
   for = "/*"
   [headers.values]
@@ -61,7 +74,7 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
 
-# ---------- Noindex for previews (safe staging) ----------
+# ---------- Noindex for previews ----------
 [context.deploy-preview]
   [[context.deploy-preview.headers]]
     for = "/*"
